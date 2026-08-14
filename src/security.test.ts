@@ -8,4 +8,9 @@ describe("database security contract",()=>{
   it("keeps approval admin-only and transactional",()=>{expect(migration).toContain("role='admin'");expect(migration).toContain("for update");expect(migration).toContain("approve_batch_atomic");});
   it("does not grant activation table access to authenticated users",()=>expect(migration).toContain("revoke all on public.auth_identities,public.activation_codes,public.login_security_events from anon,authenticated"));
   it("enforces masked community snapshots",()=>expect(migration).toContain("mask_generated_name(p.generated_name)"));
+  it("keeps backend validation aligned with legacy generated IDs",()=>{
+    const core=fs.readFileSync("supabase/functions/_shared/core.ts","utf8");
+    expect(core).toContain("a-hj-nop-z2-9");
+    expect(core).toContain("normalizeName(value)");
+  });
 });

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { isValidGeneratedId, normalizeGeneratedId } from "../lib/generated-id";
 import { invoke, safeMessage, supabase } from "../lib/supabase";
 
 type Mode = "login" | "activate";
@@ -17,7 +18,8 @@ export function AuthScreen() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError("");
-    if (!/^@py[A-HJ-NP-Z2-9]{6}$/i.test(generatedName.trim())) return setError("Generated ID ပုံစံ မမှန်ပါ။");
+    const normalizedGeneratedId = normalizeGeneratedId(generatedName);
+    if (!isValidGeneratedId(generatedName)) return setError("Generated ID ပုံစံ မမှန်ပါ။");
     if (!/^\d{4}$/.test(pin)) return setError("PIN ကို ဂဏန်း 4 လုံး ထည့်ပါ။");
     if (mode === "activate" && pin !== confirmPin) return setError("PIN နှစ်ခု မတူပါ။");
     if (mode === "activate" && new Set(["0000","1111","2222","3333","4444","5555","6666","7777","8888","9999","1234","4321"]).has(pin)) return setError("ဒီ PIN က ခန့်မှန်းရလွယ်ပါတယ်။ အခြား PIN တစ်ခု ရွေးပေးပါ။");
@@ -25,7 +27,7 @@ export function AuthScreen() {
     setBusy(true);
     try {
       const result = await invoke<SessionPayload>(mode === "login" ? "login-ezwin-user" : "activate-ezwin-user", {
-        generated_name: generatedName.trim(), pin, ...(mode === "activate" ? { one_time_code: code.trim(), nickname: nickname.trim() } : {}),
+        generated_name: normalizedGeneratedId, pin, ...(mode === "activate" ? { one_time_code: code.trim(), nickname: nickname.trim() } : {}),
       });
       await supabase.auth.setSession(result.session);
     } catch (reason) { setError(safeMessage(reason)); } finally { setBusy(false); }

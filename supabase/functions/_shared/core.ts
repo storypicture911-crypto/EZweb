@@ -26,7 +26,9 @@ export async function bodyOf(req: Request) {
   return await req.json() as Record<string, unknown>;
 }
 export const normalizeName = (value: unknown) => String(value || "").trim().toLowerCase();
-export const validGeneratedName = (value: string) => /^@py[a-hj-np-z2-9]{6}$/i.test(value);
+// Historical managed accounts may contain `O`; retain login access for them
+// while generateName() continues to exclude confusing characters for new IDs.
+export const validGeneratedName = (value: string) => /^@py[a-hj-nop-z2-9]{6}$/.test(normalizeName(value));
 export const validPin = (value: unknown) => /^\d{4}$/.test(String(value || ""));
 export const weakPin = (pin: string) => new Set(["0000","1111","2222","3333","4444","5555","6666","7777","8888","9999","1234","4321"]).has(pin);
 
