@@ -1,0 +1,8 @@
+[functions.activate-ezwin-user]
+verify_jwt = false
+
+[functions.login-ezwin-user]
+verify_jwt = false
+
+[functions.bootstrap-admin]
+verify_jwt = false
