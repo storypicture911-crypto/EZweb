@@ -39,8 +39,8 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
   const privileged = currentProfile?.role === "admin" || currentProfile?.role === "staff";
   const profileQuery = currentProfile
     ? privileged
-      ? supabase.from("profiles").select("id,generated_name,nickname,role,avatar_key,is_active,created_at").order("created_at")
-      : supabase.from("profiles").select("id,generated_name,nickname,role,avatar_key,is_active,created_at").eq("id", currentProfile.userId || "")
+      ? supabase.from("profiles").select("id,generated_name,nickname,role,avatar_key,is_active,activated_at,created_at").order("created_at")
+      : supabase.from("profiles").select("id,generated_name,nickname,role,avatar_key,is_active,activated_at,created_at").eq("id", currentProfile.userId || "")
     : Promise.resolve({ data: [], error: null });
 
   const entryQuery = currentProfile
@@ -80,7 +80,7 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
     avatarKey: row.avatar_key,
     joined: String(row.created_at).slice(0, 10),
     role: row.role,
-    status: row.is_active ? "Active" : "Inactive",
+    status: !row.is_active ? "Inactive" : row.activated_at ? "Active" : "Pending activation",
     isActive: row.is_active,
   }));
   const appEntries = (entries.data || []).map((row: any) => {

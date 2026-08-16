@@ -8,6 +8,7 @@ import {
   Layers, ScrollText
 } from "lucide-react";
 import {
+  activateCloud,
   cloudEnabled,
   getCloudProfile,
   loginCloud,
@@ -969,13 +970,18 @@ function PreviousView() {
 --------------------------------------------------------------------- */
 function AuthView() {
   const { saveProfile, setView, showToast, refreshData } = useApp();
-  const [mode, setMode] = useState("login"); // login | register | forgot
+  const [mode, setMode] = useState("login"); // login | activate | register | forgot
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loginId, setLoginId] = useState("");
   const [loginPin, setLoginPin] = useState("");
+  const [activationId, setActivationId] = useState("");
+  const [activationCode, setActivationCode] = useState("");
+  const [activationNickname, setActivationNickname] = useState("");
+  const [activationPin, setActivationPin] = useState("");
+  const [activationConfirm, setActivationConfirm] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [avatar, setAvatar] = useState(AVATARS[0]);
   const [fpStep, setFpStep] = useState(1);
@@ -1021,6 +1027,26 @@ function AuthView() {
     }
   };
 
+  const activate = async () => {
+    setError("");
+    if (!activationId.trim()) return setError("Generated ID လိုအပ်ပါသည်");
+    if (!/^([A-HJ-NP-Z2-9]{4})-([A-HJ-NP-Z2-9]{4})$/i.test(activationCode.trim())) return setError("Invalid activation code");
+    if (!activationNickname.trim() || activationNickname.trim().length > 30) return setError("Nickname ကို စာလုံး 1 မှ 30 အတွင်း ထည့်ပါ");
+    if (!/^\d{4}$/.test(activationPin)) return setError("PIN ကို ဂဏန်း ၄ လုံးတိတိ ထည့်ပါ");
+    if (activationPin !== activationConfirm) return setError("PIN နှစ်ခု မတူပါ");
+    if (new Set(["0000","1111","2222","3333","4444","5555","6666","7777","8888","9999","1234","4321"]).has(activationPin)) return setError("ဒီ PIN က ခန့်မှန်းရလွယ်ပါတယ်။ အခြား PIN တစ်ခု ရွေးပေးပါ");
+    try {
+      if (!cloudEnabled) throw new Error("Supabase မချိတ်ထားသေးပါ");
+      const row = await activateCloud({ generatedName: activationId.trim(), activationCode: activationCode.trim(), nickname: activationNickname.trim(), pin: activationPin });
+      if (!row) throw new Error("Activation failed. Please try again.");
+      const activeProfile = cloudProfileToApp(row);
+      await saveProfile(activeProfile); await refreshData(activeProfile);
+      showToast("Account activated — signed in successfully"); setView("profile");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Activation failed. Please try again.");
+    }
+  };
+
   const sendRecovery = async () => {
     setError("");
     try {
@@ -1050,8 +1076,22 @@ function AuthView() {
     <div className="ez-view ez-authview">
       <div className="ez-auth-tabs">
         <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Login</button>
+        <button className={mode === "activate" ? "active" : ""} onClick={() => setMode("activate")}>Activation Code</button>
         <button className={mode === "register" ? "active" : ""} onClick={() => setMode("register")}>Create account</button>
       </div>
+
+      {mode === "activate" && (
+        <Ticket_ className="ez-authcard">
+          <label className="ez-field"><span>Generated ID</span><input value={activationId} onChange={(e) => setActivationId(e.target.value)} placeholder="@py7K9M2Q" autoComplete="username" /></label>
+          <label className="ez-field"><span>Activation Code</span><input value={activationCode} onChange={(e) => setActivationCode(e.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9-]/g, "").slice(0, 9))} placeholder="K7M9-Q4PX" autoComplete="one-time-code" /></label>
+          <label className="ez-field"><span>Nickname</span><input value={activationNickname} onChange={(e) => setActivationNickname(e.target.value)} maxLength={30} placeholder="ဆရာကြီး" /></label>
+          <label className="ez-field"><span>New PIN</span><input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4} value={activationPin} onChange={(e) => setActivationPin(e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
+          <label className="ez-field"><span>Confirm PIN</span><input type={showPin ? "text" : "password"} inputMode="numeric" maxLength={4} value={activationConfirm} onChange={(e) => setActivationConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
+          {error && <div className="ez-error">{error}</div>}
+          <button className="ez-btn ez-btn-gold ez-btn-block" onClick={activate}>Activate & Sign In</button>
+          <p className="ez-authnote">Activation Codes are single-use and expire automatically.</p>
+        </Ticket_>
+      )}
 
       {mode === "register" && (
         <Ticket_ className="ez-authcard">

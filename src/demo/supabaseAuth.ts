@@ -35,6 +35,18 @@ export async function loginCloud(generatedName: string, pin: string) {
   return getCloudProfile();
 }
 
+export async function activateCloud(input: { generatedName: string; activationCode: string; nickname: string; pin: string }) {
+  const result = await invoke<SessionPayload>("activate-ezwin-user", {
+    generated_name: input.generatedName,
+    one_time_code: input.activationCode,
+    nickname: input.nickname,
+    pin: input.pin,
+  });
+  const { error } = await supabase.auth.setSession(result.session);
+  if (error) throw error;
+  return getCloudProfile();
+}
+
 export async function registerCloud(input: { nickname: string; recoveryEmail: string; pin: string }) {
   const result = await invoke<SessionPayload & { generated_name: string }>("register-ezwin-user", {
     nickname: input.nickname,

@@ -19,7 +19,7 @@ export async function registerUser(req: Request) {
     const { data: created, error } = await admin.auth.admin.createUser({ id: userId, email, password, email_confirm: true, user_metadata: { ezwin_generated_id: generatedName } });
     if (error || !created.user) throw new Error("CREATE_FAILED");
     try {
-      const { error: profileError } = await admin.from("profiles").insert({ id: userId, generated_name: generatedName, nickname, role: "user", avatar_key: "lucky-clover-01" }); if (profileError) throw profileError;
+      const { error: profileError } = await admin.from("profiles").insert({ id: userId, generated_name: generatedName, nickname, role: "user", avatar_key: "lucky-clover-01", activated_at: new Date().toISOString() }); if (profileError) throw profileError;
       await admin.from("auth_identities").insert({ user_id: userId, internal_email: email });
       await admin.from("profile_private").insert({ user_id: userId, recovery_email: email, recovery_email_verified_at: new Date().toISOString() });
       await admin.from("user_roles").upsert({ user_id: userId, role: "user" }, { onConflict: "user_id" });

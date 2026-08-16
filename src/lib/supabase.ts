@@ -13,7 +13,16 @@ export const supabase = createClient(
 export async function invoke<T>(name: string, body: Record<string, unknown> = {}): Promise<T> {
   if (!isConfigured) throw new Error("SUPABASE_NOT_CONFIGURED");
   const { data, error } = await supabase.functions.invoke(name, { body });
-  if (error) throw new Error(error.message || "တစ်ခုခု မှားယွင်းနေပါသည်။");
+  if (error) {
+    let message = error.message || "တစ်ခုခု မှားယွင်းနေပါသည်။";
+    try {
+      const payload = await (error as unknown as { context?: Response }).context?.clone().json() as { error?: string } | undefined;
+      if (payload?.error) message = payload.error;
+    } catch {
+      // The response body is optional; retain the safe transport message.
+    }
+    throw new Error(message);
+  }
   return data as T;
 }
 
