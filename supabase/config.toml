@@ -6,3 +6,12 @@ verify_jwt = false
 
 [functions.bootstrap-admin]
 verify_jwt = false
+
+[functions.register-ezwin-user]
+verify_jwt = false
+
+[functions.request-password-recovery]
+verify_jwt = false
+
+[functions.verify-password-recovery]
+verify_jwt = false

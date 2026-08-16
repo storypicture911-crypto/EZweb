@@ -10,7 +10,7 @@ import type { LotteryBatch, LotteryWeek } from "../types";
 const resultCopy: Record<MatchType, { icon: string; title: string; body: string }> = {
   exact: { icon: "🎉", title: "Winner! Exact Match", body: "ဂုဏ်ယူပါတယ် — ဂဏန်းတိတိကျကျ ကိုက်ညီပါတယ်။" },
   twd: { icon: "🔥", title: "တွဒ်ပေါက်သည်", body: "ဂဏန်းသုံးလုံး အစီအစဉ်ကွာပြီး ကိုက်ညီပါတယ်။" },
-  "korea-miss": { icon: "😭", title: "ကိုးရီးယားလွဲလေး", body: "ဂဏန်းနှစ်လုံး တိတိကျကျ ကိုက်ပြီး တစ်လုံးလွဲသွားပါတယ်။" },
+  "korea-miss": { icon: "🥰", title: "ကိုရီးယားလွဲလေး လွဲသွားပါပြီ", body: "နီးစပ်ပေမယ့် ဒီတစ်ခါ ဆုမရသေးပါ။" },
   none: { icon: "🌿", title: "ဒီတစ်ပတ် မကိုက်သေးပါ", body: "ရလဒ်ကို အေးဆေးစွာ မှတ်တမ်းထဲ သိမ်းထားပါတယ်။" },
 };
 

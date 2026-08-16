@@ -9,6 +9,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "setup:supabase": "bash scripts/setup-supabase.sh",
     "test": "vitest run",
     "lint": "tsc -b"
   },
