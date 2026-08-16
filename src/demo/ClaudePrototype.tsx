@@ -19,10 +19,10 @@ import {
   verifyCloudRecovery,
 } from "./supabaseAuth";
 import {
-  confirmCloudDealer,
+  confirmCloudTransaction,
   createCloudWeek,
   createManagedCloudUser,
-  deleteCloudEntry,
+  deleteCloudTransaction,
   loadProductionData,
   manageCloudClosedNumber,
   manageCloudDream,
@@ -360,7 +360,7 @@ export default function EZWinApp() {
     );
   }
 
-  const isAdminView = view === "admin" && profile?.role === "admin";
+  const isAdminView = view === "admin" && (profile?.role === "admin" || profile?.role === "staff");
 
   return (
     <Ctx.Provider value={ctxValue}>
@@ -399,7 +399,7 @@ function TopBar() {
       </div>
       {profile ? (
         <div className="ez-top-actions">
-          {profile.role === "admin" && <button className="ez-admin-open" onClick={() => setView("admin")}><Shield size={14}/> Admin Panel</button>}
+          {(profile.role === "admin" || profile.role === "staff") && <button className="ez-admin-open" onClick={() => setView("admin")}><Shield size={14}/> {profile.role === "admin" ? "Admin" : "Staff"} Panel</button>}
           <button className="ez-idchip" onClick={() => setView("profile")}>
             <AvatarVisual className="ez-idchip-avatar" value={profile.avatar} />
             <span className="ez-idchip-id">{maskId(profile.id)}</span>
@@ -582,8 +582,9 @@ function CommunityView() {
   const { profile, communityProfiles } = useApp();
   const [openProfile, setOpenProfile] = useState(null);
   const allMembers = useMemo(() => {
+    const publicMine = communityProfiles.find((member) => member.userId === profile?.userId);
     const mine = profile
-      ? [{ id: profile.id, nickname: profile.nickname, avatar: profile.avatar, joined: profile.joined, entries: [], wins: [], self: true }]
+      ? [{ id: profile.id, nickname: profile.nickname, avatar: profile.avatar, joined: profile.joined, entries: publicMine?.entries || [], wins: publicMine?.wins || [], activeEntryCount: publicMine?.activeEntryCount || 0, self: true }]
       : [];
     const others = communityProfiles.filter((member) => member.userId !== profile?.userId);
     return [...mine, ...others];
@@ -609,6 +610,12 @@ function CommunityView() {
 }
 
 function MemberModal({ member, onClose }) {
+  const confirmedGroups = Object.values((member.entries || []).reduce((groups, entry) => {
+    const key = entry.batchId || entry.id;
+    if (!groups[key]) groups[key] = { id: key, sequenceNo: entry.sequenceNo, lines: [] };
+    groups[key].lines.push(entry);
+    return groups;
+  }, {}));
   return (
     <div className="ez-modal-backdrop" onClick={onClose}>
       <div className="ez-modal" onClick={(e) => e.stopPropagation()}>
@@ -617,13 +624,11 @@ function MemberModal({ member, onClose }) {
         <div className="ez-modal-name">{member.nickname}</div>
         <div className="ez-modal-joined">Joined {member.joined}</div>
 
-        {member.entries.length > 0 && (
+        {confirmedGroups.length > 0 && (
           <>
-            <div className="ez-modal-section">ထိုးထားသောဂဏန်း (public)</div>
-            <div className="ez-modal-numbers">
-              {member.entries.map((e, i) => (
-                <span key={i} className="ez-numpill">{e.number}{e.hasR ? "R" : ""}</span>
-              ))}
+            <div className="ez-modal-section">Confirmed Entries</div>
+            <div className="ez-history-detail-list">
+              {confirmedGroups.map((group) => <Ticket_ key={group.id} className="ez-history-batch"><strong>({group.sequenceNo})</strong><div className="ez-modal-numbers">{group.lines.map((entry) => <span key={entry.id} className="ez-numpill">{entry.number}{entry.hasR ? "R" : ""} · {Number(entry.amount).toLocaleString()}</span>)}</div></Ticket_>)}
             </div>
           </>
         )}
@@ -672,7 +677,7 @@ function EntryView() {
     const currentWeek = weeks.find((week) => week.status === "current") || weeks.find((week) => week.isOpen);
     if (!currentWeek) return showToast("Open lottery week မရှိသေးပါ");
     try {
-      const existing = entries.find((entry) => entry.weekId === currentWeek.id && entry.ownerUserId === profile.userId);
+      const existing = entries.find((entry) => entry.weekId === currentWeek.id && entry.ownerUserId === profile.userId && entry.workflowStatus === "pending");
       await saveCloudBatch({ batchId: existing?.batchId, weekId: currentWeek.id, userId: profile.userId, entries: validLines.map((line) => ({ number: line.number, amount: line.amount, hasR: line.hasR })) });
       await refreshData();
       setRaw("");
@@ -1223,7 +1228,7 @@ function ProfileView() {
         <div className="ez-profile-joined">Joined {profile.joined}</div>
       </div>
 
-      {profile.role === "admin" && <button className="ez-btn ez-btn-gold ez-btn-block ez-profile-admin" onClick={() => setView("admin")}><Shield size={15}/> Open Admin Panel</button>}
+      {(profile.role === "admin" || profile.role === "staff") && <button className="ez-btn ez-btn-gold ez-btn-block ez-profile-admin" onClick={() => setView("admin")}><Shield size={15}/> Open {profile.role === "admin" ? "Admin" : "Staff"} Panel</button>}
 
       {editing ? (
         <Ticket_ className="ez-authcard">
@@ -1283,28 +1288,29 @@ function OutcomePill({ outcome }) {
 ======================================================================= */
 function AdminView() {
   const { profile, setView } = useApp();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(profile?.role === "staff" ? "enter" : "overview");
 
-  if (profile?.role !== "admin") return <div className="ez-view"><EmptyGate title="Admin access only" body="This area requires an authenticated Admin role." cta="Back to Home" onClick={() => setView("home")}/></div>;
+  if (profile?.role !== "admin" && profile?.role !== "staff") return <div className="ez-view"><EmptyGate title="Staff access only" body="This area requires an authenticated Admin or Staff role." cta="Back to Home" onClick={() => setView("home")}/></div>;
 
   const tabs = [
     { key: "overview", label: "Overview", icon: TrendingUp },
     { key: "users", label: "Users", icon: Users },
     { key: "history", label: "Entries / Lottery History", icon: History },
     { key: "results", label: "Draws & Results", icon: Send },
-    { key: "dealer", label: "Dealer Confirmations", icon: ClipboardCheck },
+    { key: "dealer", label: "Admin Confirmations", icon: ClipboardCheck },
     { key: "weeks", label: "Weeks", icon: Calendar },
     { key: "dream", label: "Dream1000", icon: BookOpen },
     { key: "staff", label: "Staff Management", icon: Shield },
     { key: "audit", label: "Audit History", icon: ScrollText },
     { key: "enter", label: "ဂဏန်းထည့်မည်", icon: Plus },
   ];
+  const visibleTabs = profile.role === "admin" ? tabs : tabs.filter((item) => item.key === "history" || item.key === "enter");
 
   return (
     <div className="ez-admin">
       <aside className="ez-admin-side">
         <div className="ez-admin-brand" onClick={() => setView("home")}><ArrowLeft size={14} /> EZWin Admin</div>
-        {tabs.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon;
           return (
             <button key={t.key} className={"ez-admin-navitem" + (tab === t.key ? " active" : "")} onClick={() => setTab(t.key)}>
@@ -1317,11 +1323,11 @@ function AdminView() {
         </button>
       </aside>
       <div className="ez-admin-content">
-        {tab === "overview" && <AdminDashboard setTab={setTab} />}
+        {tab === "overview" && profile.role === "admin" && <AdminDashboard setTab={setTab} />}
         {tab === "users" && <AdminUsers />}
         {tab === "history" && <AdminHistory />}
         {tab === "results" && <AdminResults />}
-        {tab === "dealer" && <AdminDealerConfirmations />}
+        {tab === "dealer" && profile.role === "admin" && <AdminDealerConfirmations />}
         {tab === "weeks" && <AdminWeeks />}
         {tab === "dream" && <AdminDream100 />}
         {tab === "staff" && <AdminStaff />}
@@ -1521,13 +1527,12 @@ function AdminStaff() {
 }
 
 function AdminEnterNumbers() {
-  const { entries, today, showToast, managedUsers, closedNumbers, weeks, refreshData } = useApp();
+  const { entries, profile, showToast, managedUsers, closedNumbers, weeks, refreshData } = useApp();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState(null);
   const [raw, setRaw] = useState("");
-  const [enteredBy, setEnteredBy] = useState("staff");
   const [closedRaw, setClosedRaw] = useState(closedNumbers.join(", "));
-  const [sequence, setSequence] = useState("1");
+  const [sequence, setSequence] = useState("");
   const [nameMode, setNameMode] = useState("profile");
   const [newName, setNewName] = useState("");
   const [quickCredentials, setQuickCredentials] = useState(null);
@@ -1538,6 +1543,10 @@ function AdminEnterNumbers() {
   const parsed = useMemo(() => parseEntryLines(raw, parsedClosedNumbers), [raw, closedRaw]);
   const validLines = parsed.filter((p) => p.valid);
   const total = validLines.reduce((sum, line) => sum + entryStakeTotal(line, parsedClosedNumbers), 0);
+  const usedSerials = useMemo(() => [...new Set(entries.filter((entry) => entry.weekId === currentWeek?.id).map((entry) => Number(entry.sequenceNo)).filter(Number.isInteger))], [entries, currentWeek?.id]);
+  const suggestedSerial = usedSerials.length ? Math.max(...usedSerials) + 1 : 1;
+  const serialNumber = Number(sequence);
+  const duplicateSerial = Number.isInteger(serialNumber) && usedSerials.includes(serialNumber);
   const historyGroups = useMemo(() => {
     const groups = {};
     entries.filter((entry) => entry.viaAdmin).forEach((entry) => {
@@ -1551,6 +1560,9 @@ function AdminEnterNumbers() {
   useEffect(() => {
     if (!selected && users.length > 0) setSelected(users[0]);
   }, [managedUsers]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!sequence) setSequence(String(suggestedSerial));
+  }, [currentWeek?.id, suggestedSerial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dealerText = () => {
     if (!selected || validLines.length === 0) return "";
@@ -1560,17 +1572,19 @@ function AdminEnterNumbers() {
 
   const persist = async (workflowStatus, copyForDealer = false) => {
     if (!selected || validLines.length === 0 || !currentWeek) return showToast("User နှင့် open week ကိုရွေးပါ");
+    if (!Number.isInteger(serialNumber) || serialNumber < 1) return showToast("အမှတ်စဉ်ကို မှန်ကန်စွာထည့်ပါ။");
+    if (duplicateSerial) return showToast(`အမှတ်စဉ် (${serialNumber}) ရှိပြီးသားဖြစ်ပါသည်။ အခြားအမှတ်စဉ်တစ်ခုရွေးပါ။`);
     const copyText = dealerText();
     try {
-      const existing = entries.find((entry) => entry.weekId === currentWeek.id && entry.ownerUserId === selected.userId);
-      const result = await saveCloudBatch({ batchId: existing?.batchId, weekId: currentWeek.id, userId: selected.userId, entries: validLines.map((line) => ({ number: line.number, amount: line.amount, hasR: line.hasR })) });
-      if (workflowStatus === "sent") await confirmCloudDealer(result.batch.id);
-      await refreshData();
+      const result = await saveCloudBatch({ weekId: currentWeek.id, userId: selected.userId, serialNumber, entries: validLines.map((line) => ({ number: line.number, amount: line.amount, hasR: line.hasR })) });
+      const refreshed = await refreshData();
       if (copyForDealer) {
         try { await navigator.clipboard.writeText(copyText); showToast("Supabase မှာသိမ်းပြီး ဒိုင်ဆီပို့ရန် Copy လုပ်ပြီးပါပြီ"); }
         catch { showToast("Supabase မှာသိမ်းပြီးပါပြီ"); }
-      } else showToast(`${validLines.length} line Supabase History မှာ သိမ်းပြီးပါပြီ`);
+      } else showToast(`Transaction (${result.batch.sequence_no}) Supabase History မှာ သိမ်းပြီးပါပြီ`);
       setRaw("");
+      const refreshedSerials = refreshed.entries.filter((entry) => entry.weekId === currentWeek.id).map((entry) => Number(entry.sequenceNo)).filter(Number.isInteger);
+      setSequence(String(refreshedSerials.length ? Math.max(...refreshedSerials) + 1 : 1));
     } catch (error) { showToast(error instanceof Error ? error.message : "Save failed"); }
   };
   const createQuickUser = async () => {
@@ -1580,11 +1594,13 @@ function AdminEnterNumbers() {
       const data = await refreshData();
       const user = data.users.find((item) => item.id === credentials.generated_name);
       setQuickCredentials(credentials); setSelected(user || null); setQ(""); setNewName(""); setNameMode("profile");
-      setSequence(String(Math.min(100, users.length + 1))); showToast(`Supabase user created: ${credentials.generated_name}`);
+      showToast(`Supabase user created: ${credentials.generated_name}`);
     } catch (error) { showToast(error instanceof Error ? error.message : "Create user failed"); }
   };
-  const deleteLine = async (id) => {
-    try { await deleteCloudEntry(id); await refreshData(); showToast("Supabase History line ဖျက်ပြီးပါပြီ"); }
+  const deleteTransaction = async (group) => {
+    if (profile?.role !== "admin") return showToast("Admin သာ transaction ဖျက်နိုင်ပါသည်။");
+    if (!window.confirm(`Delete transaction (${group.sequenceNo})?\n\nThis will remove this transaction and its entry lines.`)) return;
+    try { await deleteCloudTransaction(group.id); await refreshData(); showToast(`Transaction (${group.sequenceNo}) ဖျက်ပြီးပါပြီ`); }
     catch (error) { showToast(error instanceof Error ? error.message : "Delete failed"); }
   };
   const saveClosedList = async () => {
@@ -1613,8 +1629,8 @@ function AdminEnterNumbers() {
     <div className="ez-admin-view">
       <h1 className="ez-admin-h1">ဂဏန်းထည့်မည် — on behalf of a user</h1>
       <Ticket_ className="ez-admin-control-card">
-        <div className="ez-admin-control-grid"><label className="ez-field"><span>အမှတ်စဉ် (1–100)</span><input type="number" min="1" max="100" value={sequence} onChange={(e) => setSequence(String(Math.max(1, Math.min(100, Number(e.target.value) || 1))))}/></label><label className="ez-field"><span>ပိတ်ဂဏန်းများ</span><input value={closedRaw} onChange={(e) => setClosedRaw(e.target.value.replace(/[^\d,\s]/g, ""))} placeholder="344, 455"/></label></div>
-        <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={saveClosedList}>ပိတ်ဂဏန်း သိမ်းမည်</button>
+        <div className="ez-admin-control-grid"><label className="ez-field"><span>အမှတ်စဉ်</span><input type="number" min="1" max="999999" value={sequence} onChange={(e) => setSequence(e.target.value.replace(/\D/g, "").slice(0, 6))}/>{duplicateSerial && <small className="ez-error">အမှတ်စဉ် ({serialNumber}) ရှိပြီးသားဖြစ်ပါသည်။ အခြားအမှတ်စဉ်တစ်ခုရွေးပါ။</small>}</label>{profile?.role === "admin" && <label className="ez-field"><span>ပိတ်ဂဏန်းများ</span><input value={closedRaw} onChange={(e) => setClosedRaw(e.target.value.replace(/[^\d,\s]/g, ""))} placeholder="344, 455"/></label>}</div>
+        {profile?.role === "admin" && <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={saveClosedList}>ပိတ်ဂဏန်း သိမ်းမည်</button>}
       </Ticket_>
       <Ticket_ className="ez-name-picker">
         <div className="ez-admin-panel-title">အမည်ရွေးမည်</div>
@@ -1641,20 +1657,13 @@ function AdminEnterNumbers() {
             {validLines.map((line, index) => <div key={index}>{line.number}{line.hasR ? "R" : ""}-{line.amount.toLocaleString()} {!line.hasR && parsedClosedNumbers.includes(line.number) && <em>(ပိတ် X)</em>} {line.hasR && <span>{reverseStakeUnits(line.number)} လုံး</span>}</div>)}
             <b>Total - {total.toLocaleString()} Ks</b>
           </div>}
-          <label className="ez-field">
-            <span>Entered by</span>
-            <select className="ez-select" value={enteredBy} onChange={(e) => setEnteredBy(e.target.value)}>
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
-          <div className="ez-admin-entry-actions"><button className="ez-btn ez-btn-cream ez-btn-sm" disabled={validLines.length === 0} onClick={() => persist("saved")}><Save size={14}/> သိမ်းမည်</button><button className="ez-btn ez-btn-ghost ez-btn-sm" disabled={validLines.length === 0} onClick={copyAll}>Copy</button><button className="ez-btn ez-btn-gold ez-btn-sm" disabled={validLines.length === 0} onClick={() => persist("sent", true)}><Send size={14}/> ဒိုင်ဆီပို့မည်</button></div>
+          <div className="ez-admin-entry-actions"><button className="ez-btn ez-btn-cream ez-btn-sm" disabled={validLines.length === 0 || duplicateSerial} onClick={() => persist("saved")}><Save size={14}/> Save Transaction</button><button className="ez-btn ez-btn-ghost ez-btn-sm" disabled={validLines.length === 0} onClick={copyAll}>Copy</button><button className="ez-btn ez-btn-gold ez-btn-sm" disabled={validLines.length === 0 || duplicateSerial} onClick={() => persist("submitted", true)}><Send size={14}/> သိမ်းပြီး Copy မည်</button></div>
         </Ticket_>
       )}
       <div className="ez-row-head"><h2>ထိုးထားသောဂဏန်းများ</h2><span className="ez-board-count">Admin only</span></div>
       {historyGroups.length === 0 ? <p className="ez-empty-note">Admin entry history မရှိသေးပါ။</p> : <div className="ez-admin-history">{historyGroups.map((group) => {
         const groupTotal = group.lines.reduce((sum, line) => sum + entryStakeTotal(line, closedNumbers), 0);
-        return <Ticket_ key={group.id} className="ez-history-batch"><div className="ez-history-head"><AvatarVisual className="ez-history-avatar" value={group.ownerAvatar || "🍀"}/><div><strong>({group.sequenceNo}) {group.ownerName}</strong><code>{group.ownerId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status === "sent" ? "ဒိုင်ဆီပို့ပြီး" : group.status === "confirmed" ? "အတည်ပြုပြီး" : "သိမ်းပြီး"}</span></div><div className="ez-history-lines">{group.lines.map((line) => <div key={line.id}><span>{line.number}{line.hasR ? "R" : ""}-{Number(line.amount).toLocaleString()}</span><button title="Delete line" onClick={() => deleteLine(line.id)}><X size={13}/></button></div>)}</div><div className="ez-history-total"><span>Total</span><strong>{groupTotal.toLocaleString()} Ks</strong></div><button className="ez-btn ez-btn-ghost ez-btn-sm ez-btn-block" onClick={() => copyHistoryGroup(group)}>Copy this batch</button></Ticket_>;
+        return <Ticket_ key={group.id} className="ez-history-batch"><div className="ez-history-head"><AvatarVisual className="ez-history-avatar" value={group.ownerAvatar || "🍀"}/><div><strong>({group.sequenceNo}) {group.ownerName}</strong><code>{group.ownerId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status === "confirmed" ? "Admin Confirmed" : "Pending Admin Confirmation"}</span></div><div className="ez-history-lines">{group.lines.map((line) => <div key={line.id}><span>{line.number}{line.hasR ? "R" : ""}-{Number(line.amount).toLocaleString()}</span></div>)}</div><div className="ez-history-total"><span>Total</span><strong>{groupTotal.toLocaleString()} Ks</strong></div><button className="ez-btn ez-btn-ghost ez-btn-sm ez-btn-block" onClick={() => copyHistoryGroup(group)}>Copy this batch</button>{profile?.role === "admin" && <button className="ez-btn ez-btn-ghost ez-btn-sm ez-btn-block ez-danger-action" onClick={() => deleteTransaction(group)}><X size={13}/> Delete Transaction</button>}</Ticket_>;
       })}</div>}
     </div>
   );
@@ -1671,7 +1680,7 @@ function AdminHistory() {
   const filtered = memberId === "all" ? all : all.filter((entry) => entry.ownerId === memberId);
   const groups = Object.values(filtered.reduce((out, entry) => {
     const key = entry.batchId || `${entry.ownerId}-${entry.drawDate}-${entry.id}`;
-    if (!out[key]) out[key] = { id: key, member: entry.ownerName, memberId: entry.ownerId, week: entry.weekTitle || entry.drawDate, status: entry.workflowStatus || "saved", createdAt: entry.createdAt || entry.drawDate, lines: [] };
+    if (!out[key]) out[key] = { id: key, member: entry.ownerName, memberId: entry.ownerId, sequenceNo: entry.sequenceNo, week: entry.weekTitle || entry.drawDate, status: entry.workflowStatus || "pending", createdAt: entry.createdAt || entry.drawDate, lines: [] };
     out[key].lines.push(entry);
     return out;
   }, {})).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -1685,7 +1694,7 @@ function AdminHistory() {
       const outcomes = resultRecord ? group.lines.map((line) => calculateEntryResult(line, resultRecord.number, closedNumbers)) : [];
       const prize = outcomes.reduce((sum, result) => sum + (result.prize || 0), 0);
       const resultLabel = !resultRecord ? "Pending" : prize > 0 ? "Winner" : outcomes.some((result) => result.outcome === "koreamiss") ? "ကိုရီးယားလွဲ 🥰" : "No prize";
-      return <Ticket_ key={group.id} className="ez-history-detail"><div className="ez-history-detail-head"><div><strong>{group.member || "Member"}</strong><code>{group.memberId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status}</span></div><dl><div><dt>Week</dt><dd>{group.week}</dd></div><div><dt>Entered numbers</dt><dd>{group.lines.map((line) => `${line.number}${line.hasR ? "R" : ""}`).join(", ")}</dd></div><div><dt>Amount per number</dt><dd>{group.lines.map((line) => Number(line.amount).toLocaleString()).join(", ")} Ks</dd></div><div><dt>Total</dt><dd>{total.toLocaleString()} Ks</dd></div><div><dt>Dealer confirmation</dt><dd>{group.status}</dd></div><div><dt>Result</dt><dd>{resultLabel}</dd></div><div><dt>Prize / payout</dt><dd>{prize.toLocaleString()} Ks</dd></div><div><dt>Created</dt><dd>{group.createdAt ? new Date(group.createdAt).toLocaleString() : "—"}</dd></div></dl></Ticket_>;
+      return <Ticket_ key={group.id} className="ez-history-detail"><div className="ez-history-detail-head"><div><strong>({group.sequenceNo}) {group.member || "Member"}</strong><code>{group.memberId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status === "confirmed" ? "Admin Confirmed" : "Pending Admin Confirmation"}</span></div><dl><div><dt>Week</dt><dd>{group.week}</dd></div><div><dt>Entered numbers</dt><dd>{group.lines.map((line) => `${line.number}${line.hasR ? "R" : ""}`).join(", ")}</dd></div><div><dt>Amount per number</dt><dd>{group.lines.map((line) => Number(line.amount).toLocaleString()).join(", ")} Ks</dd></div><div><dt>Total</dt><dd>{total.toLocaleString()} Ks</dd></div><div><dt>Admin confirmation</dt><dd>{group.status}</dd></div><div><dt>Result</dt><dd>{resultLabel}</dd></div><div><dt>Prize / payout</dt><dd>{prize.toLocaleString()} Ks</dd></div><div><dt>Created</dt><dd>{group.createdAt ? new Date(group.createdAt).toLocaleString() : "—"}</dd></div></dl></Ticket_>;
     })}</div>}
   </div>;
 }
@@ -1699,10 +1708,15 @@ function AdminDealerConfirmations() {
     return out;
   }, {}));
   const confirm = async (group) => {
-    try { await confirmCloudDealer(group.id); await refreshData(); showToast("Dealer confirmation Supabase မှာ မှတ်တမ်းတင်ပြီးပါပြီ"); }
+    try { await confirmCloudTransaction(group.id); await refreshData(); showToast(`Transaction (${group.sequenceNo}) Admin Confirmed ဖြစ်ပါပြီ`); }
     catch (error) { showToast(error instanceof Error ? error.message : "Confirmation failed"); }
   };
-  return <div className="ez-admin-view"><h1 className="ez-admin-h1">Dealer Confirmations</h1><p className="ez-admin-lead">Saved and sent entry batches are confirmed here.</p>{groups.length === 0 ? <p className="ez-empty-note">No dealer batches yet.</p> : <div className="ez-admin-history">{groups.map((group) => <Ticket_ key={group.id} className="ez-history-batch"><div className="ez-history-head"><div><strong>({group.sequenceNo || 1}) {group.member}</strong><code>{group.memberId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status}</span></div><div className="ez-history-lines">{group.lines.map((line) => <div key={line.id}><span>{line.number}{line.hasR ? "R" : ""}-{Number(line.amount).toLocaleString()}</span></div>)}</div><div className="ez-history-total"><span>Total</span><strong>{group.lines.reduce((sum, line) => sum + entryStakeTotal(line, closedNumbers), 0).toLocaleString()} Ks</strong></div>{group.status !== "confirmed" && <button className="ez-btn ez-btn-gold ez-btn-block ez-btn-sm" onClick={() => confirm(group)}><Check size={14}/> Confirm Dealer</button>}</Ticket_>)}</div>}</div>;
+  const remove = async (group) => {
+    if (!window.confirm(`Delete transaction (${group.sequenceNo})?\n\nThis will remove this transaction and its entry lines.`)) return;
+    try { await deleteCloudTransaction(group.id); await refreshData(); showToast(`Transaction (${group.sequenceNo}) ဖျက်ပြီးပါပြီ`); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Delete failed"); }
+  };
+  return <div className="ez-admin-view"><h1 className="ez-admin-h1">Admin Confirmations</h1><p className="ez-admin-lead">Transactions remain private until an Admin confirms them.</p>{groups.length === 0 ? <p className="ez-empty-note">No transactions yet.</p> : <div className="ez-admin-history">{groups.map((group) => <Ticket_ key={group.id} className="ez-history-batch"><div className="ez-history-head"><div><strong>({group.sequenceNo || 1}) {group.member}</strong><code>{group.memberId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status === "confirmed" ? "Admin Confirmed" : "Pending Admin Confirmation"}</span></div><div className="ez-history-lines">{group.lines.map((line) => <div key={line.id}><span>{line.number}{line.hasR ? "R" : ""}-{Number(line.amount).toLocaleString()}</span></div>)}</div><div className="ez-history-total"><span>Total</span><strong>{group.lines.reduce((sum, line) => sum + entryStakeTotal(line, closedNumbers), 0).toLocaleString()} Ks</strong></div>{group.status !== "confirmed" && <button className="ez-btn ez-btn-gold ez-btn-block ez-btn-sm" onClick={() => confirm(group)}><Check size={14}/> Confirm Transaction</button>}<button className="ez-btn ez-btn-ghost ez-btn-block ez-btn-sm ez-danger-action" onClick={() => remove(group)}><X size={13}/> Delete Transaction</button></Ticket_>)}</div>}</div>;
 }
 
 function AdminWeeks() {
@@ -2100,6 +2114,7 @@ const CSS = `
 .ez-admin-copy-preview{background:var(--ink);border:1px solid rgba(231,181,75,.2);border-radius:12px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px;display:grid;gap:7px;}
 .ez-admin-copy-preview strong{color:var(--cream);margin-bottom:4px;}.ez-admin-copy-preview em{color:var(--ruby);font-style:normal;}.ez-admin-copy-preview span{color:var(--gold);}.ez-admin-copy-preview b{color:var(--gold);border-top:1px solid rgba(244,236,216,.1);padding-top:10px;margin-top:3px;}
 .ez-admin-control-card,.ez-quick-create-user{max-width:620px;}.ez-admin-control-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}.ez-admin-entry-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}.ez-admin-history{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}.ez-history-batch{margin:0;}.ez-history-head{display:flex;align-items:center;gap:10px;padding-top:2px;}.ez-history-avatar{width:38px;height:38px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;object-fit:cover;}.ez-history-head>div{display:grid;min-width:0;flex:1;}.ez-history-head strong{font-family:'Fraunces',serif;font-size:15px;}.ez-history-head code{font-size:9px;color:var(--mist);}.ez-history-status{font-size:8px;text-transform:uppercase;border-radius:99px;padding:4px 7px;background:rgba(143,163,155,.15);color:var(--mist);}.ez-history-status.sent{background:rgba(231,181,75,.14);color:var(--gold);}.ez-history-lines{display:grid;gap:0;margin:13px 0 8px;}.ez-history-lines>div{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(244,236,216,.06);padding:7px 0;font-family:'JetBrains Mono',monospace;font-size:11px;}.ez-history-lines button{width:26px;height:26px;border:0;border-radius:7px;background:rgba(225,73,91,.1);color:var(--ruby);display:grid;place-items:center;}.ez-history-total{display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(231,181,75,.2);padding:10px 0 12px;font-size:10px;color:var(--mist);}.ez-history-total strong{font-family:'JetBrains Mono',monospace;color:var(--gold);font-size:14px;}
+.ez-danger-action{color:var(--ruby);margin-top:8px;}
 .ez-admin-member-filter{max-width:420px;margin-bottom:16px;}.ez-history-detail-list{display:grid;gap:12px;}.ez-history-detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}.ez-history-detail-head>div{display:grid;}.ez-history-detail-head strong{font-family:'Fraunces',serif;font-size:16px;}.ez-history-detail-head code{font-size:10px;color:var(--mist);}.ez-history-detail dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;}.ez-history-detail dl>div{background:var(--panel2);border-radius:8px;padding:9px;display:grid;gap:3px;}.ez-history-detail dt{font-size:9px;color:var(--mist);text-transform:uppercase;letter-spacing:.4px;}.ez-history-detail dd{font-size:11px;margin:0;overflow-wrap:anywhere;}.ez-week-list{display:grid;gap:8px;margin-top:16px;}.ez-week-row{display:flex;align-items:center;gap:10px;}.ez-week-row>div{display:grid;flex:1;}.ez-week-row span{font-size:10px;color:var(--mist);}.ez-dream-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px;}.ez-dream-card{display:flex;align-items:center;gap:12px;}.ez-dream-card>strong{font-family:'JetBrains Mono',monospace;color:var(--gold);font-size:22px;}.ez-dream-card>div{display:grid;flex:1;}.ez-dream-card b{font-size:13px;}.ez-dream-card span{font-size:10px;color:var(--mist);}.ez-draw-admin-status{display:grid;gap:5px;margin-top:14px;}.ez-draw-admin-status strong{font-family:'Fraunces',serif;}.ez-draw-admin-status b{font-family:'JetBrains Mono',monospace;color:var(--gold);}.ez-draw-admin-status small{color:var(--mist);}.ez-result-stats{margin-top:16px;}
 
 .ez-adminlogin{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}

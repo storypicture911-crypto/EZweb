@@ -82,5 +82,16 @@ export async function recordSecurity(accountHash:string,ipHash:string,eventType:
 export async function edgeHandler(req: Request, operation: (body: Record<string, unknown>) => Promise<unknown>, roles: ("admin"|"staff"|"user")[]) {
   if (req.method === "OPTIONS") return new Response(null,{status:204,headers:cors(req)});
   try { const body = await bodyOf(req); if (!body) return json(req,{}); const actor = await getActor(req,roles); return json(req,await operation({...body,__actor:actor})); }
-  catch(error){ const code=error instanceof Error?error.message:"ERROR"; const status=code==="UNAUTHORIZED"?401:code==="FORBIDDEN"?403:400; return json(req,{error: status===403?"ခွင့်ပြုချက်မရှိပါ။":"လုပ်ဆောင်မှု မအောင်မြင်ပါ။"},status); }
+  catch(error){
+    const code=error instanceof Error?error.message:"ERROR";
+    const duplicate=code.match(/^DUPLICATE_SERIAL:(\d+)$/);
+    const status=code==="UNAUTHORIZED"?401:code==="FORBIDDEN"||code==="Forbidden"?403:code==="TRANSACTION_NOT_FOUND"?404:code==="DUPLICATE_SERIAL"||duplicate?409:400;
+    const message=duplicate
+      ? `အမှတ်စဉ် (${duplicate[1]}) ရှိပြီးသားဖြစ်ပါသည်။ အခြားအမှတ်စဉ်တစ်ခုရွေးပါ။`
+      : status===403?"ခွင့်ပြုချက်မရှိပါ။"
+      : code==="TRANSACTION_NOT_FOUND"?"Transaction မတွေ့ပါ။"
+      : code==="INVALID_SERIAL"?"အမှတ်စဉ်ကို မှန်ကန်စွာထည့်ပါ။"
+      : "လုပ်ဆောင်မှု မအောင်မြင်ပါ။";
+    return json(req,{error:message},status);
+  }
 }

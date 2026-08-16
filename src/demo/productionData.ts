@@ -43,9 +43,9 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
       : supabase.from("profiles").select("id,generated_name,nickname,role,avatar_key,is_active,activated_at,created_at").eq("id", currentProfile.userId || "")
     : Promise.resolve({ data: [], error: null });
 
-  const entryQuery = currentProfile
-    ? supabase.from("lottery_entries").select("id,batch_id,week_id,user_id,number,amount,is_closed,has_r,created_at,lottery_batches(sequence_no,status,dealer_confirmed_at,created_at),profiles(nickname,generated_name,avatar_key),lottery_weeks(title,draw_date,is_current,is_open)").order("created_at")
-    : Promise.resolve({ data: [], error: null });
+  const entryQuery = privileged
+    ? supabase.from("lottery_entries").select("id,batch_id,week_id,user_id,number,amount,is_closed,has_r,created_at,lottery_batches(sequence_no,status,approved_at,created_by,created_at),profiles(nickname,generated_name,avatar_key),lottery_weeks(title,draw_date,is_current,is_open)").order("created_at")
+    : supabase.rpc("get_visible_lottery_entries");
 
   const closedQuery = privileged
     ? supabase.from("closed_numbers").select("id,week_id,number,reason,created_at")
@@ -87,22 +87,25 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
     const batch = Array.isArray(row.lottery_batches) ? row.lottery_batches[0] : row.lottery_batches;
     const owner = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
     const week = Array.isArray(row.lottery_weeks) ? row.lottery_weeks[0] : row.lottery_weeks;
+    const rawStatus = batch?.status || row.status || "pending";
+    const workflowStatus = rawStatus === "approved" ? "confirmed" : rawStatus === "sent_to_dealer" ? "submitted" : "pending";
     return {
       id: row.id,
       batchId: row.batch_id,
       weekId: row.week_id,
       ownerUserId: row.user_id,
-      ownerId: owner?.generated_name || "",
-      ownerName: owner?.nickname || "EZWin Member",
-      ownerAvatar: avatarEmoji(owner?.avatar_key),
+      ownerId: owner?.generated_name || row.display_id || "",
+      ownerName: owner?.nickname || row.nickname || "EZWin Member",
+      ownerAvatar: avatarEmoji(owner?.avatar_key || row.avatar_key),
       number: row.number,
       amount: Number(row.amount),
       hasR: Boolean(row.has_r),
-      drawDate: dateParts(week?.draw_date).date,
-      viaAdmin: privileged,
-      sequenceNo: batch?.sequence_no,
-      workflowStatus: batch?.status || "pending",
-      dealerConfirmedAt: batch?.dealer_confirmed_at,
+      drawDate: dateParts(week?.draw_date || row.draw_date).date,
+      weekTitle: week?.title || row.week_title || "Lottery draw",
+      viaAdmin: privileged ? batch?.created_by !== row.user_id : Boolean(row.via_admin),
+      sequenceNo: batch?.sequence_no || row.sequence_no,
+      workflowStatus,
+      confirmedAt: batch?.approved_at || row.confirmed_at,
       createdAt: row.created_at,
       source: privileged ? "admin" : "self",
     };
@@ -124,17 +127,20 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
     publishedAt: currentResult?.publishedAt,
     publishedBy: currentResult?.publishedBy,
   } : { draft: null, published: null, date: null };
-  const communityProfiles = (community.data || []).map((row: any) => ({
-    id: row.masked_id || row.profile_id,
-    userId: row.profile_id,
-    nickname: row.nickname || "EZWin Member",
-    avatar: avatarEmoji(row.avatar_key),
-    joined: String(row.joined_at).slice(0, 10),
-    entries: [],
-    wins: [],
-    activeEntryCount: Number(row.active_entry_count || 0),
-    winCount: Number(row.win_count || 0),
-  }));
+  const communityProfiles = (community.data || []).map((row: any) => {
+    const publicEntries = appEntries.filter((entry: any) => entry.ownerUserId === row.profile_id && entry.workflowStatus === "confirmed");
+    return {
+      id: row.masked_id || row.profile_id,
+      userId: row.profile_id,
+      nickname: row.nickname || "EZWin Member",
+      avatar: avatarEmoji(row.avatar_key),
+      joined: String(row.joined_at).slice(0, 10),
+      entries: publicEntries,
+      wins: [],
+      activeEntryCount: Number(row.active_entry_count || 0),
+      winCount: Number(row.win_count || 0),
+    };
+  });
   const closedNumbers = (closed.data || []).filter((row: any) => !currentWeek || row.week_id === currentWeek.id).map((row: any) => row.number);
   const publicClosedNumbers = (board.data || []).filter((row: any) => row.is_closed).map((row: any) => row.number);
   const occupiedNumbers = [...new Set((board.data || []).filter((row: any) => Number(row.entry_count) > 0).flatMap((row: any) => row.has_r ? numberPermutations(row.number) : [row.number]))];
@@ -146,11 +152,11 @@ export async function loadProductionData(currentProfile?: { role?: string; userI
 
 export const createManagedCloudUser = (nickname: string) => invoke<{ generated_name: string; one_time_code: string; expires_at: string }>("create-ezwin-user", { nickname: nickname.trim() || null });
 
-export async function saveCloudBatch(input: { batchId?: string | null; weekId: string; userId: string; entries: Array<{ number: string; amount: number; hasR?: boolean }> }) {
-  return invoke<{ batch: { id: string } }>(input.batchId ? "update-lottery-batch" : "create-lottery-batch", { batch_id: input.batchId || null, week_id: input.weekId, user_id: input.userId, entries: input.entries });
+export async function saveCloudBatch(input: { batchId?: string | null; weekId: string; userId: string; serialNumber?: number | null; entries: Array<{ number: string; amount: number; hasR?: boolean }> }) {
+  return invoke<{ batch: { id: string; sequence_no: number } }>(input.batchId ? "update-lottery-batch" : "create-lottery-batch", { batch_id: input.batchId || null, week_id: input.weekId, user_id: input.userId, serial_number: input.serialNumber ?? null, entries: input.entries });
 }
 
-export const confirmCloudDealer = (batchId: string) => invoke("submit-to-dealer", { batch_id: batchId });
+export const confirmCloudTransaction = (batchId: string) => invoke("approve-lottery-batch", { batch_id: batchId });
 export const publishCloudResult = (weekId: string, resultNumber: string) => invoke("publish-result", { week_id: weekId, result_number: resultNumber });
 export const saveCloudResultDraft = (weekId: string, resultNumber: string) => invoke("save-result-draft", { week_id: weekId, result_number: resultNumber });
 export const manageCloudClosedNumber = (weekId: string, number: string, action: "close" | "reopen") => invoke("manage-closed-number", { week_id: weekId, number, action });
@@ -158,7 +164,7 @@ export const createCloudWeek = (title: string, drawDate: string, isCurrent = tru
 export const updateCloudWeek = (id: string, input: { title: string; drawDate?: string; isOpen?: boolean; isCurrent?: boolean }) => invoke("manage-lottery-week", { action: "update", id, title: input.title, draw_date: input.drawDate || null, is_open: input.isOpen ?? true, is_current: input.isCurrent ?? false });
 export const manageCloudDream = (action: "save" | "delete", input: Record<string, unknown>) => invoke("manage-dream100", { action, ...input });
 export const manageCloudUser = (userId: string, action: string, role?: string) => invoke("manage-user", { user_id: userId, action, role });
-export const deleteCloudEntry = (entryId: string) => invoke("manage-lottery-entry", { action: "delete", entry_id: entryId });
+export const deleteCloudTransaction = (batchId: string) => invoke("manage-lottery-entry", { action: "delete_transaction", batch_id: batchId });
 
 export function productionSupabaseHost() {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
