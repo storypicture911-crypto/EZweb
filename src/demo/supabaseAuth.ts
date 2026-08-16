@@ -60,26 +60,3 @@ export async function verifyCloudRecovery(requestId: string, code: string, newPi
 }
 
 export const signOutCloud = () => supabase.auth.signOut();
-
-export async function getCloudState<T>(stateKey: string): Promise<T | undefined> {
-  if (!isConfigured) return undefined;
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user.id) return undefined;
-  const { data, error } = await supabase.from("operator_state").select("value").eq("owner_id", session.user.id).eq("state_key", stateKey).maybeSingle();
-  if (error) throw error;
-  return data?.value as T | undefined;
-}
-
-export async function setCloudState(stateKey: string, value: unknown) {
-  if (!isConfigured) return false;
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user.id) return false;
-  if (value === null || value === undefined) {
-    const { error } = await supabase.from("operator_state").delete().eq("owner_id", session.user.id).eq("state_key", stateKey);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.from("operator_state").upsert({ owner_id: session.user.id, state_key: stateKey, value, updated_at: new Date().toISOString() });
-    if (error) throw error;
-  }
-  return true;
-}

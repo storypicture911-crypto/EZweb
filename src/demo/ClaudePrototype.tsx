@@ -9,36 +9,38 @@ import {
 } from "lucide-react";
 import {
   cloudEnabled,
-  getCloudState,
   getCloudProfile,
   loginCloud,
   registerCloud,
   requestCloudRecovery,
   signOutCloud,
-  setCloudState,
   updateCloudProfile,
   verifyCloudRecovery,
 } from "./supabaseAuth";
+import {
+  confirmCloudDealer,
+  createCloudWeek,
+  createManagedCloudUser,
+  deleteCloudEntry,
+  loadProductionData,
+  manageCloudClosedNumber,
+  manageCloudDream,
+  manageCloudUser,
+  publishCloudResult,
+  saveCloudBatch,
+  saveCloudResultDraft,
+  updateCloudWeek,
+} from "./productionData";
 
 /* =====================================================================
-   EZWIN — points-based lottery community prototype
-   Every amount in this app is a virtual demo credit. No real payments,
+   EZWIN — points-based lottery community
+   Every amount in this app is a virtual credit. No real payments,
    deposits, withdrawals, or cash-out exist anywhere in this build.
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
-   DATA ACCESS LAYER
-   Every read/write funnels through `db.*` so the mock layer below can be
-   swapped for real Supabase calls later without touching any component.
-   Personal data uses window.storage (shared:false) so it survives reloads
-   for the person using this browser, without being visible to anyone else.
+   Production data is loaded from and persisted to Supabase.
 --------------------------------------------------------------------- */
-const ID_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-function generateId() {
-  let s = "";
-  for (let i = 0; i < 6; i++) s += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
-  return "@py" + s;
-}
 function maskId(id) {
   if (!id || id.length < 7) return id;
   return id.slice(0, 4) + "***" + id.slice(-2);
@@ -49,37 +51,6 @@ function AvatarVisual({ value, className = "" }) {
     : <span className={className}>{value}</span>;
 }
 const AVATARS = ["🐯", "🐉", "🦋", "🌸", "🎆", "🪙", "🎏", "🧧", "🌙", "⭐", "🔥", "🍀", "🎯", "🐢", "🦚", "🐘"];
-
-async function storageGet(key, fallback) {
-  if (cloudEnabled) {
-    try {
-      const cloudValue = await getCloudState(key);
-      if (cloudValue !== undefined) return cloudValue;
-    } catch (error) {
-      console.error("cloud state read failed", key, error);
-    }
-  }
-  try {
-    const value = window.localStorage.getItem(key);
-    return value ? JSON.parse(value) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-async function storageSet(key, value) {
-  if (cloudEnabled) {
-    try {
-      if (await setCloudState(key, value)) return;
-    } catch (error) {
-      console.error("cloud state write failed", key, error);
-    }
-  }
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.error("storage set failed", key, e);
-  }
-}
 
 /* ---------------------------------------------------------------------
    LOTTERY RULES ENGINE — the single source of truth for all prize math.
@@ -273,49 +244,6 @@ function todayKey(yangonNow) {
   return yangonNow.toISOString().slice(0, 10);
 }
 
-/* ---------------------------------------------------------------------
-   SEED / MOCK DATA — clearly-marked demo content
---------------------------------------------------------------------- */
-const SEED_NAMES = ["Thiri", "Kaung", "Su Su", "Zayar", "Hnin", "Aung Aung", "Moe Moe", "Htet", "Yadanar", "Nay Chi"];
-const seedCommunity = SEED_NAMES.map((name, i) => ({
-  id: generateId(),
-  nickname: name,
-  avatar: AVATARS[i % AVATARS.length],
-  joined: `2025-0${(i % 9) + 1}-14`,
-  entries: [
-    { number: String(100 + i * 37).slice(-3), amount: 500 * ((i % 4) + 1), hasR: i % 5 === 0 },
-    { number: String(20 + i * 7).padStart(3, "0").slice(-3), amount: 300 * ((i % 3) + 1), hasR: false },
-  ],
-  wins: i % 3 === 0 ? [{ date: "2025-07-21", label: "Exact win", amount: 550000 }] : [],
-}));
-
-const seedPreviousResults = [
-  { date: "2025-08-14", number: "704", month: "August", year: 2025, note: "" },
-  { date: "2025-08-13", number: "218", month: "August", year: 2025, note: "" },
-  { date: "2025-08-12", number: "955", month: "August", year: 2025, note: "" },
-  { date: "2025-08-11", number: "063", month: "August", year: 2025, note: "" },
-  { date: "2025-08-08", number: "342", month: "August", year: 2025, note: "" },
-  { date: "2025-07-31", number: "119", month: "July", year: 2025, note: "" },
-  { date: "2025-07-30", number: "588", month: "July", year: 2025, note: "" },
-  { date: "2025-07-29", number: "471", month: "July", year: 2025, note: "" },
-];
-
-const seedStaffCandidates = seedCommunity.slice(0, 4);
-const seedWeeks = [
-  { id: "aug-16", title: "August 16 Week", date: "2026-08-16", time: "15:30", status: "current" },
-  { id: "aug-09", title: "August 9 Week", date: "2026-08-09", time: "15:30", status: "closed" },
-];
-const seedDream100 = [
-  { number: "001", label: "နဂါး", meaning: "အခွင့်အရေးအသစ်" },
-  { number: "007", label: "ကြယ်", meaning: "ကံကောင်းခြင်း" },
-  { number: "100", label: "ပန်း", meaning: "ပျော်ရွှင်ခြင်း" },
-];
-
-const DEMO_ACCOUNTS = {
-  "@admin": { pin: "2468", role: "admin", nickname: "EZWin Admin", avatar: AVATARS[5] },
-  "@kol37xi": { pin: "1234", role: "user", nickname: "ဆရာကြီး", avatar: AVATARS[3] },
-};
-
 function cloudProfileToApp(row) {
   return {
     id: row.generated_name,
@@ -343,54 +271,56 @@ export default function EZWinApp() {
   const [booted, setBooted] = useState(false);
   const [profile, setProfile] = useState(null); // null = signed out
   const [entries, setEntries] = useState([]); // this user's own entries
-  const [staff, setStaff] = useState([]); // promoted staff (demo, shared:false personal record acting as "system" record)
+  const [staff, setStaff] = useState([]);
   const [drawRecord, setDrawRecord] = useState({ draft: null, published: null, date: null });
-  const [previousResults, setPreviousResults] = useState(seedPreviousResults);
+  const [previousResults, setPreviousResults] = useState([]);
   const [managedUsers, setManagedUsers] = useState([]);
-  const [closedNumbers, setClosedNumbers] = useState(["344"]);
-  const [weeks, setWeeks] = useState(seedWeeks);
-  const [dream100, setDream100] = useState(seedDream100);
+  const [communityProfiles, setCommunityProfiles] = useState([]);
+  const [occupiedNumbers, setOccupiedNumbers] = useState([]);
+  const [closedNumbers, setClosedNumbers] = useState([]);
+  const [weeks, setWeeks] = useState([]);
+  const [dream100, setDream100] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [dataError, setDataError] = useState("");
   const [view, setView] = useState("home");
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [toast, setToast] = useState(null);
   const yangonNow = useYangonClock();
   const today = todayKey(yangonNow);
 
+  const applyProductionData = useCallback((data) => {
+    setEntries(data.entries); setStaff(data.staff); setDrawRecord(data.drawRecord);
+    setPreviousResults(data.previousResults); setManagedUsers(data.users);
+    setCommunityProfiles(data.communityProfiles); setClosedNumbers(data.closedNumbers);
+    setOccupiedNumbers(data.occupiedNumbers);
+    setWeeks(data.weeks); setDream100(data.dream100); setAuditLogs(data.auditLogs);
+  }, []);
+
+  const refreshData = useCallback(async (activeProfile = profile) => {
+    try {
+      const data = await loadProductionData(activeProfile);
+      applyProductionData(data); setDataError("");
+      return data;
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : "Supabase data မရရှိပါ");
+      throw error;
+    }
+  }, [profile, applyProductionData]);
+
   useEffect(() => {
     (async () => {
-      let p = await storageGet("ezwin:profile", null);
-      if (cloudEnabled) {
-        try {
-          const cloudProfile = await getCloudProfile();
-          if (cloudProfile) p = cloudProfileToApp(cloudProfile);
-          else if (p?.cloud) p = null;
-        } catch (error) {
-          console.error("Supabase session restore failed", error);
-        }
+      try {
+        const cloudProfile = cloudEnabled ? await getCloudProfile() : null;
+        const appProfile = cloudProfile ? cloudProfileToApp(cloudProfile) : null;
+        setProfile(appProfile);
+        await refreshData(appProfile);
+      } catch (error) {
+        setDataError(error instanceof Error ? error.message : "Supabase data မရရှိပါ");
+      } finally {
+        setBooted(true);
       }
-      const e = await storageGet("ezwin:entries", []);
-      const s = await storageGet("ezwin:staff", []);
-      const d = await storageGet("ezwin:draw", { draft: null, published: null, date: null });
-      const pr = await storageGet("ezwin:previousResults", seedPreviousResults);
-      const mu = await storageGet("ezwin:managedUsers", []);
-      const cn = await storageGet("ezwin:closedNumbers", ["344"]);
-      const wk = await storageGet("ezwin:weeks", seedWeeks);
-      const dr = await storageGet("ezwin:dream100", seedDream100);
-      const al = await storageGet("ezwin:auditLogs", []);
-      setProfile(p);
-      setEntries(e);
-      setStaff(s);
-      setDrawRecord(d);
-      setPreviousResults(pr);
-      setManagedUsers(mu);
-      setClosedNumbers(cn);
-      setWeeks(wk);
-      setDream100(dr);
-      setAuditLogs(al);
-      setBooted(true);
     })();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -402,61 +332,22 @@ export default function EZWinApp() {
       await updateCloudProfile(next.nickname, next.avatarKey || "lucky-clover-01");
     }
     setProfile(next);
-    await storageSet("ezwin:profile", next);
   }, []);
-  const saveEntries = useCallback(async (next) => {
-    setEntries(next);
-    await storageSet("ezwin:entries", next);
-  }, []);
-  const saveStaff = useCallback(async (next) => {
-    setStaff(next);
-    await storageSet("ezwin:staff", next);
-  }, []);
-  const saveDrawRecord = useCallback(async (next) => {
-    setDrawRecord(next);
-    await storageSet("ezwin:draw", next);
-  }, []);
-  const savePreviousResults = useCallback(async (next) => {
-    setPreviousResults(next);
-    await storageSet("ezwin:previousResults", next);
-  }, []);
-  const saveManagedUsers = useCallback(async (next) => {
-    setManagedUsers(next);
-    await storageSet("ezwin:managedUsers", next);
-  }, []);
-  const saveClosedNumbers = useCallback(async (next) => {
-    setClosedNumbers(next);
-    await storageSet("ezwin:closedNumbers", next);
-  }, []);
-  const saveWeeks = useCallback(async (next) => {
-    setWeeks(next);
-    await storageSet("ezwin:weeks", next);
-  }, []);
-  const saveDream100 = useCallback(async (next) => {
-    setDream100(next);
-    await storageSet("ezwin:dream100", next);
-  }, []);
-  const addAudit = useCallback(async (action, detail = "") => {
-    const item = { id: Math.random().toString(36).slice(2), action, detail, actor: profile?.id || "system", createdAt: new Date().toISOString() };
-    const next = [item, ...auditLogs].slice(0, 200);
-    setAuditLogs(next);
-    await storageSet("ezwin:auditLogs", next);
-  }, [auditLogs, profile]);
 
   const logout = useCallback(async () => {
     if (profile?.cloud && cloudEnabled) await signOutCloud();
     setProfile(null);
-    await storageSet("ezwin:profile", null);
+    await refreshData(null);
     setView("home");
     setAdminAuthed(false);
-  }, [profile]);
+  }, [profile, refreshData]);
 
   const ctxValue = {
-    profile, saveProfile, entries, saveEntries, staff, saveStaff,
-    drawRecord, saveDrawRecord, previousResults, savePreviousResults,
+    profile, saveProfile, entries, staff,
+    drawRecord, previousResults,
     view, setView, adminAuthed, setAdminAuthed, logout, showToast,
-    yangonNow, today, managedUsers, saveManagedUsers, closedNumbers, saveClosedNumbers,
-    weeks, saveWeeks, dream100, saveDream100, auditLogs, addAudit,
+    yangonNow, today, managedUsers, communityProfiles, occupiedNumbers, closedNumbers,
+    weeks, dream100, auditLogs, refreshData, dataError,
   };
 
   if (!booted) {
@@ -476,6 +367,7 @@ export default function EZWinApp() {
         <style>{CSS}</style>
         {!isAdminView && <TopBar />}
         <main className={isAdminView ? "ez-admin-main" : "ez-main"}>
+          {dataError && <div className="ez-error ez-data-error">Supabase data error: {dataError}</div>}
           {view === "home" && <HomeView />}
           {view === "community" && <CommunityView />}
           {view === "draw" && <DrawView />}
@@ -574,10 +466,10 @@ function Ticket_({ children, className = "", accent }) {
    HOME
 --------------------------------------------------------------------- */
 function HomeView() {
-  const { setView, yangonNow, profile, entries, closedNumbers, drawRecord, weeks } = useApp();
+  const { setView, yangonNow, profile, entries, occupiedNumbers, closedNumbers, drawRecord, weeks } = useApp();
   const target = nextDrawTarget(yangonNow);
   const remaining = target.getTime() - yangonNow.getTime();
-  const adminNumbers = useMemo(() => new Set(entries.filter((entry) => entry.viaAdmin).flatMap((entry) => entry.hasR ? expandR(entry.number).variants : [entry.number])), [entries]);
+  const adminNumbers = useMemo(() => new Set(occupiedNumbers), [occupiedNumbers]);
   const numberBoard = useMemo(() => Array.from({ length: 1000 }, (_, index) => String(index).padStart(3, "0")), []);
   const publicWinners = useMemo(() => {
     if (!drawRecord.published) return [];
@@ -686,25 +578,27 @@ function Dream100View() {
    COMMUNITY
 --------------------------------------------------------------------- */
 function CommunityView() {
-  const { profile } = useApp();
+  const { profile, communityProfiles } = useApp();
   const [openProfile, setOpenProfile] = useState(null);
   const allMembers = useMemo(() => {
     const mine = profile
       ? [{ id: profile.id, nickname: profile.nickname, avatar: profile.avatar, joined: profile.joined, entries: [], wins: [], self: true }]
       : [];
-    return [...mine, ...seedCommunity];
-  }, [profile]);
+    const others = communityProfiles.filter((member) => member.userId !== profile?.userId);
+    return [...mine, ...others];
+  }, [profile, communityProfiles]);
 
   return (
     <div className="ez-view">
       <h1 className="ez-h1">Community</h1>
-      <p className="ez-sub">လူသားရေချာလှတဲ့ ထီအသိုင်းအဝိုင်း — demo credits only</p>
+      <p className="ez-sub">လူသားရေချာလှတဲ့ ထီအသိုင်းအဝိုင်း — virtual credits only</p>
+      {allMembers.length === 0 && <p className="ez-empty-note">No community profiles yet.</p>}
       <div className="ez-communitygrid">
         {allMembers.map((m) => (
           <button key={m.id} className="ez-membercard" onClick={() => setOpenProfile(m)}>
             <div className="ez-membercard-avatar">{m.avatar}</div>
             <div className="ez-membercard-name">{m.nickname}{m.self && <span className="ez-you-badge">you</span>}</div>
-            <div className="ez-membercard-meta">{m.entries.length} active {m.entries.length === 1 ? "entry" : "entries"}</div>
+            <div className="ez-membercard-meta">{m.activeEntryCount ?? m.entries.length} active {(m.activeEntryCount ?? m.entries.length) === 1 ? "entry" : "entries"}</div>
           </button>
         ))}
       </div>
@@ -752,7 +646,7 @@ function MemberModal({ member, onClose }) {
    ENTRY — ဂဏန်းထည့်ခြင်း
 --------------------------------------------------------------------- */
 function EntryView() {
-  const { profile, entries, saveEntries, setView, showToast, today } = useApp();
+  const { profile, entries, setView, showToast, today, weeks, refreshData } = useApp();
   const [raw, setRaw] = useState("");
   const parsed = useMemo(() => parseEntryLines(raw), [raw]);
   const validLines = parsed.filter((p) => p.valid);
@@ -774,25 +668,17 @@ function EntryView() {
 
   const submit = async () => {
     if (validLines.length === 0) return;
-    const next = [
-      ...entries,
-      ...validLines.map((l) => ({
-        id: Math.random().toString(36).slice(2, 10),
-        number: l.number,
-        hasR: l.hasR,
-        amount: l.amount,
-        raw: l.raw,
-        source: "self",
-        ownerId: profile.id,
-        ownerName: profile.nickname,
-        ownerAvatar: profile.avatar,
-        drawDate: today,
-        createdAt: new Date().toISOString(),
-      })),
-    ];
-    await saveEntries(next);
-    setRaw("");
-    showToast(`${validLines.length} number(s) saved to today's draw`);
+    const currentWeek = weeks.find((week) => week.status === "current") || weeks.find((week) => week.isOpen);
+    if (!currentWeek) return showToast("Open lottery week မရှိသေးပါ");
+    try {
+      const existing = entries.find((entry) => entry.weekId === currentWeek.id && entry.ownerUserId === profile.userId);
+      await saveCloudBatch({ batchId: existing?.batchId, weekId: currentWeek.id, userId: profile.userId, entries: validLines.map((line) => ({ number: line.number, amount: line.amount, hasR: line.hasR })) });
+      await refreshData();
+      setRaw("");
+      showToast(`${validLines.length} number(s) saved to Supabase`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Save failed");
+    }
   };
 
   const todaysEntries = entries.filter((e) => e.drawDate === today && e.ownerId === profile.id);
@@ -869,17 +755,16 @@ function EmptyGate({ title, body, cta, onClick }) {
    DRAW — the signature screen
 --------------------------------------------------------------------- */
 function DrawView() {
-  const { yangonNow, drawRecord, entries, profile, today, showToast, closedNumbers } = useApp();
+  const { yangonNow, drawRecord, entries, profile, today, closedNumbers } = useApp();
   const target = nextDrawTarget(yangonNow);
   const remaining = target.getTime() - yangonNow.getTime();
   const officiallyPublished = drawRecord.published && drawRecord.date === today ? drawRecord.published : null;
 
-  const [demoNumber, setDemoNumber] = useState(null); // demo-only local preview, never persisted as official
   const [phase, setPhase] = useState("idle"); // idle -> rolling -> revealing -> done
   const [tiles, setTiles] = useState(["〰", "〰", "〰"]);
   const rollRef = useRef(null);
 
-  const activeNumber = officiallyPublished || demoNumber;
+  const activeNumber = officiallyPublished;
 
   useEffect(() => {
     if (!activeNumber && phase === "idle") {
@@ -923,17 +808,6 @@ function DrawView() {
   const koreaMisses = myResults.filter((r) => r.result.outcome === "koreamiss");
   const iWon = phase === "done" && myWins.length > 0;
 
-  const runDemoPreview = () => {
-    const n = String(Math.floor(Math.random() * 900) + 100);
-    setDemoNumber(n);
-    showToast("Demo preview only — not an official result");
-  };
-  const resetDemo = () => {
-    setDemoNumber(null);
-    setPhase("idle");
-    setTiles(["〰", "〰", "〰"]);
-  };
-
   return (
     <div className="ez-view ez-drawview">
       <div className="ez-draw-clock">{fmtClock(yangonNow)} <span>Myanmar Time</span></div>
@@ -945,9 +819,6 @@ function DrawView() {
       )}
       {officiallyPublished && (
         <div className="ez-draw-status published"><Sparkles size={13} /> Official result published</div>
-      )}
-      {!officiallyPublished && demoNumber && (
-        <div className="ez-draw-status demo"><AlertCircle size={13} /> Demo preview — not saved as official</div>
       )}
 
       <div className={"ez-lanterns " + (phase === "done" ? "settled" : "")}>
@@ -1008,19 +879,6 @@ function DrawView() {
         </p>
       )}
 
-      <div className="ez-demo-controls">
-        {!activeNumber ? (
-          <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={runDemoPreview}>
-            ▶ Demo: preview reveal now
-          </button>
-        ) : (
-          !officiallyPublished && (
-            <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={resetDemo}>
-              <RotateCcw size={13} /> Reset preview
-            </button>
-          )
-        )}
-      </div>
     </div>
   );
 }
@@ -1110,7 +968,7 @@ function PreviousView() {
    AUTH
 --------------------------------------------------------------------- */
 function AuthView() {
-  const { saveProfile, setView, showToast } = useApp();
+  const { saveProfile, setView, showToast, refreshData } = useApp();
   const [mode, setMode] = useState("login"); // login | register | forgot
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
@@ -1135,12 +993,12 @@ function AuthView() {
     if (!/^\d{4}$/.test(pin)) return setError("PIN ကို ဂဏန်း ၄ လုံးတိတိ ထည့်ပါ");
     if (pin !== confirm) return setError("Password မတူညီပါ");
     try {
-      const profile = cloudEnabled
-        ? cloudProfileToApp(await registerCloud({ nickname: nickname.trim(), recoveryEmail: email.trim(), pin }))
-        : { id: generateId(), nickname: nickname.trim(), email: email.trim(), avatar, joined: new Date().toISOString().slice(0, 10), role: "user" };
+      if (!cloudEnabled) throw new Error("Supabase မချိတ်ထားသေးပါ");
+      const profile = cloudProfileToApp(await registerCloud({ nickname: nickname.trim(), recoveryEmail: email.trim(), pin }));
       if (!profile) throw new Error("Profile မရရှိပါ");
       profile.avatar = avatar;
       await saveProfile(profile);
+      await refreshData(profile);
       showToast(`Welcome, ${profile.nickname}! Your ID is ${profile.id}`);
       setView("profile");
     } catch (reason) {
@@ -1151,17 +1009,11 @@ function AuthView() {
   const login = async () => {
     setError("");
     if (!loginId.trim() || !loginPin.trim()) return setError("ID နှင့် Password ထည့်ပါ");
-    const normalized = loginId.trim().toLowerCase();
-    const demoAccount = DEMO_ACCOUNTS[normalized];
-    if (demoAccount && demoAccount.pin !== loginPin) return setError("ID သို့မဟုတ် PIN မမှန်ပါ");
     try {
-      const profile = demoAccount
-        ? { id: normalized, nickname: demoAccount.nickname, email: "", avatar: demoAccount.avatar, joined: "2025-01-01", role: demoAccount.role }
-        : cloudEnabled
-          ? cloudProfileToApp(await loginCloud(loginId.trim(), loginPin))
-          : null;
+      const profile = cloudEnabled ? cloudProfileToApp(await loginCloud(loginId.trim(), loginPin)) : null;
       if (!profile) throw new Error("Supabase မချိတ်ထားသေးပါ");
       await saveProfile(profile);
+      await refreshData(profile);
       showToast("Signed in");
       setView("profile");
     } catch {
@@ -1248,7 +1100,7 @@ function AuthView() {
           </label>
           {error && <div className="ez-error">{error}</div>}
           <button className="ez-btn ez-btn-gold ez-btn-block" onClick={login}>Login</button>
-          <p className="ez-authnote">Demo: <strong>@kol37xi / 1234</strong> · Admin: <strong>@admin / 2468</strong></p>
+          <p className="ez-authnote">Use your permanent EZWin Generated ID and PIN.</p>
           <button className="ez-link" onClick={() => { setMode("forgot"); setFpStep(1); }}>Forgot password?</button>
         </Ticket_>
       )}
@@ -1440,30 +1292,6 @@ function AdminView() {
   );
 }
 
-function AdminLogin() {
-  const { setAdminAuthed, setView } = useApp();
-  const [email, setEmail] = useState("@admin");
-  const [pw, setPw] = useState("2468");
-  const [error, setError] = useState("");
-  const login = () => {
-    if (email.trim().toLowerCase() !== "@admin" || pw !== "2468") return setError("Admin ID သို့မဟုတ် PIN မမှန်ပါ");
-    setError(""); setAdminAuthed(true);
-  };
-  return (
-    <div className="ez-adminlogin">
-      <div className="ez-adminlogin-card">
-        <div className="ez-adminlogin-mark"><Shield size={20} /> Admin</div>
-        <p>Demo admin: @admin · PIN 2468</p>
-        <label className="ez-field"><span>Admin ID</span><input value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label className="ez-field"><span>PIN</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
-        {error && <div className="ez-error">{error}</div>}
-        <button className="ez-btn ez-btn-gold ez-btn-block" onClick={login}>Enter admin</button>
-        <button className="ez-link" onClick={() => setView("home")}>Back to site</button>
-      </div>
-    </div>
-  );
-}
-
 function allEntriesForAdmin(entries, profile) {
   const mineTagged = entries.map((e) => ({
     ...e,
@@ -1482,7 +1310,7 @@ function AdminDashboard({ setTab }) {
     <div className="ez-admin-view">
       <h1 className="ez-admin-h1">Overview</h1>
       <div className="ez-statgrid">
-        <StatCard label="Total members" value={managedUsers.length + (profile ? 1 : 0)} icon={Users} />
+        <StatCard label="Total members" value={managedUsers.length} icon={Users} />
         <StatCard label="Entries today" value={all.length} icon={Ticket} />
         <StatCard label="Total staked (Ks)" value={totalAmount.toLocaleString()} icon={Coins} />
         <StatCard label="Published results on file" value={previousResults.length} icon={FileText} />
@@ -1512,24 +1340,23 @@ function StatCard({ label, value, icon: Icon }) {
 }
 
 function AdminUsers() {
-  const { entries, profile, managedUsers, saveManagedUsers, showToast } = useApp();
+  const { entries, profile, managedUsers, showToast, refreshData } = useApp();
   const [q, setQ] = useState("");
   const [openUser, setOpenUser] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newNickname, setNewNickname] = useState("");
   const [createdCredentials, setCreatedCredentials] = useState(null);
-  const users = [
-    ...(profile ? [{ id: profile.id, nickname: profile.nickname, avatar: profile.avatar, joined: profile.joined, role: "User", status: "Active" }] : []),
-    ...managedUsers,
-  ];
+  const users = managedUsers;
   const filtered = users.filter((u) => u.nickname.toLowerCase().includes(q.toLowerCase()) || u.id.toLowerCase().includes(q.toLowerCase()));
   const all = allEntriesForAdmin(entries, profile);
   const createUser = async () => {
     if (!newNickname.trim()) return;
-    const user = { id: generateId(), nickname: newNickname.trim(), avatar: AVATARS[managedUsers.length % AVATARS.length], joined: new Date().toISOString().slice(0, 10), role: "User", status: "Active", pin: String(Math.floor(1000 + Math.random() * 9000)) };
-    await saveManagedUsers([...managedUsers, user]);
-    setCreatedCredentials(user);
-    showToast("Member account created");
+    try {
+      const credentials = await createManagedCloudUser(newNickname.trim());
+      setCreatedCredentials(credentials);
+      await refreshData();
+      showToast("Member account created in Supabase");
+    } catch (error) { showToast(error instanceof Error ? error.message : "Create user failed"); }
   };
 
   return (
@@ -1542,6 +1369,7 @@ function AdminUsers() {
       <table className="ez-table">
         <thead><tr><th>#</th><th></th><th>Nickname</th><th>Generated ID</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
         <tbody>
+          {filtered.length === 0 && <tr><td colSpan={8} className="ez-empty-note">No users yet.</td></tr>}
           {filtered.map((u, index) => (
             <tr key={u.id}>
               <td className="mono">{index + 1}</td>
@@ -1562,8 +1390,8 @@ function AdminUsers() {
             <button className="ez-modal-close" onClick={() => { setCreateOpen(false); setCreatedCredentials(null); }}><X size={18}/></button>
             <div className="ez-modal-name">Create member</div>
             {createdCredentials ? <>
-              <div className="ez-credential"><span>Generated ID</span><strong>{createdCredentials.id}</strong><span>Demo PIN</span><strong>{createdCredentials.pin}</strong></div>
-              <button className="ez-btn ez-btn-gold ez-btn-block" onClick={() => navigator.clipboard.writeText(`${createdCredentials.id}\nPIN: ${createdCredentials.pin}`)}>Copy credentials</button>
+              <div className="ez-credential"><span>Generated ID</span><strong>{createdCredentials.generated_name}</strong><span>One-time activation code</span><strong>{createdCredentials.one_time_code}</strong></div>
+              <button className="ez-btn ez-btn-gold ez-btn-block" onClick={() => navigator.clipboard.writeText(`${createdCredentials.generated_name}\nActivation code: ${createdCredentials.one_time_code}`)}>Copy credentials</button>
             </> : <>
               <label className="ez-field"><span>Nickname</span><input value={newNickname} onChange={(e) => setNewNickname(e.target.value)} placeholder="ဆရာကြီး"/></label>
               <button className="ez-btn ez-btn-gold ez-btn-block" onClick={createUser}><UserPlus size={14}/> Create account</button>
@@ -1593,17 +1421,19 @@ function AdminUsers() {
 }
 
 function AdminStaff() {
-  const { staff, saveStaff, showToast, managedUsers } = useApp();
+  const { staff, showToast, managedUsers, refreshData } = useApp();
   const [confirmTarget, setConfirmTarget] = useState(null);
   const isStaff = (id) => staff.some((s) => s.id === id);
 
   const promote = async (candidate) => {
-    await saveStaff([...staff, { id: candidate.id, nickname: candidate.nickname, role: "Staff" }]);
-    setConfirmTarget(null);
-    showToast(`${candidate.nickname} is now Staff`);
+    try { await manageCloudUser(candidate.userId, "set_role", "staff"); await refreshData(); setConfirmTarget(null); showToast(`${candidate.nickname} is now Staff`); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Role update failed"); }
   };
   const revoke = async (id) => {
-    await saveStaff(staff.filter((s) => s.id !== id));
+    const target = staff.find((member) => member.id === id);
+    if (!target) return;
+    try { await manageCloudUser(target.userId, "set_role", "user"); await refreshData(); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Role update failed"); }
   };
 
   return (
@@ -1626,7 +1456,7 @@ function AdminStaff() {
 
       <div className="ez-row-head" style={{ marginTop: 22 }}><h2>Invite as staff</h2></div>
       <div className="ez-stafflist">
-        {managedUsers.filter((c) => !isStaff(c.id)).map((c) => (
+        {managedUsers.filter((c) => c.role === "user" && !isStaff(c.id)).map((c) => (
           <Ticket_ key={c.id} className="ez-entry-row">
             <span>{c.avatar} {c.nickname}</span>
             <span className="mono">{c.id}</span>
@@ -1651,7 +1481,7 @@ function AdminStaff() {
 }
 
 function AdminEnterNumbers() {
-  const { entries, saveEntries, profile, today, showToast, managedUsers, saveManagedUsers, closedNumbers, saveClosedNumbers } = useApp();
+  const { entries, today, showToast, managedUsers, closedNumbers, weeks, refreshData } = useApp();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState(null);
   const [raw, setRaw] = useState("");
@@ -1660,11 +1490,9 @@ function AdminEnterNumbers() {
   const [sequence, setSequence] = useState("1");
   const [nameMode, setNameMode] = useState("profile");
   const [newName, setNewName] = useState("");
-  const [newId, setNewId] = useState("");
-  const users = [
-    ...(profile ? [{ id: profile.id, nickname: profile.nickname, avatar: profile.avatar }] : []),
-    ...managedUsers.map((m) => ({ id: m.id, nickname: m.nickname, avatar: m.avatar })),
-  ];
+  const [quickCredentials, setQuickCredentials] = useState(null);
+  const users = managedUsers.filter((member) => member.role === "user" && member.isActive);
+  const currentWeek = weeks.find((week) => week.status === "current") || weeks.find((week) => week.isOpen);
   const filtered = q ? users.filter((u) => u.nickname.toLowerCase().includes(q.toLowerCase()) || u.id.toLowerCase().includes(q.toLowerCase())) : [];
   const parsedClosedNumbers = closedRaw.split(/[\s,]+/).filter((n) => /^\d{3}$/.test(n));
   const parsed = useMemo(() => parseEntryLines(raw, parsedClosedNumbers), [raw, closedRaw]);
@@ -1682,7 +1510,7 @@ function AdminEnterNumbers() {
 
   useEffect(() => {
     if (!selected && users.length > 0) setSelected(users[0]);
-  }, [profile, managedUsers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [managedUsers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dealerText = () => {
     if (!selected || validLines.length === 0) return "";
@@ -1691,39 +1519,43 @@ function AdminEnterNumbers() {
   };
 
   const persist = async (workflowStatus, copyForDealer = false) => {
-    if (!selected || validLines.length === 0) return;
+    if (!selected || validLines.length === 0 || !currentWeek) return showToast("User နှင့် open week ကိုရွေးပါ");
     const copyText = dealerText();
-    const batchId = Math.random().toString(36).slice(2, 11);
-    const next = [...entries, ...validLines.map((l) => ({
-      id: Math.random().toString(36).slice(2, 10), number: l.number, hasR: l.hasR, amount: l.amount,
-      raw: l.raw, source: enteredBy, drawDate: today, createdAt: new Date().toISOString(),
-      ownerId: selected.id, ownerName: selected.nickname, ownerAvatar: selected.avatar,
-      viaAdmin: true, batchId, sequenceNo: Number(sequence), workflowStatus,
-    }))];
-    await saveEntries(next);
-    await saveClosedNumbers(parsedClosedNumbers);
-    if (copyForDealer) {
-      try {
-        await navigator.clipboard.writeText(copyText);
-        showToast("ဒိုင်ဆီပို့ရန် History မှာသိမ်းပြီး Copy လုပ်ပြီးပါပြီ");
-      } catch {
-        showToast("ဒိုင်ဆီပို့ရန် History မှာ သိမ်းပြီးပါပြီ");
-      }
-    } else showToast(`${validLines.length} line History မှာ သိမ်းပြီးပါပြီ`);
-    setRaw("");
+    try {
+      const existing = entries.find((entry) => entry.weekId === currentWeek.id && entry.ownerUserId === selected.userId);
+      const result = await saveCloudBatch({ batchId: existing?.batchId, weekId: currentWeek.id, userId: selected.userId, entries: validLines.map((line) => ({ number: line.number, amount: line.amount, hasR: line.hasR })) });
+      if (workflowStatus === "sent") await confirmCloudDealer(result.batch.id);
+      await refreshData();
+      if (copyForDealer) {
+        try { await navigator.clipboard.writeText(copyText); showToast("Supabase မှာသိမ်းပြီး ဒိုင်ဆီပို့ရန် Copy လုပ်ပြီးပါပြီ"); }
+        catch { showToast("Supabase မှာသိမ်းပြီးပါပြီ"); }
+      } else showToast(`${validLines.length} line Supabase History မှာ သိမ်းပြီးပါပြီ`);
+      setRaw("");
+    } catch (error) { showToast(error instanceof Error ? error.message : "Save failed"); }
   };
   const createQuickUser = async () => {
-    if (!newName.trim() && !newId.trim()) return;
-    const id = newId.trim() || generateId();
-    const user = { id, nickname: newName.trim() || `Member ${managedUsers.length + 1}`, avatar: AVATARS[managedUsers.length % AVATARS.length], joined: today, role: "User", status: "Active", pin: String(Math.floor(1000 + Math.random() * 9000)) };
-    await saveManagedUsers([...managedUsers, user]);
-    setSelected(user); setQ(""); setNewName(""); setNewId(""); setNameMode("profile");
-    setSequence(String(Math.min(100, users.length + 1)));
-    showToast(`User created: ${user.nickname}`);
+    if (!newName.trim()) return;
+    try {
+      const credentials = await createManagedCloudUser(newName.trim());
+      const data = await refreshData();
+      const user = data.users.find((item) => item.id === credentials.generated_name);
+      setQuickCredentials(credentials); setSelected(user || null); setQ(""); setNewName(""); setNameMode("profile");
+      setSequence(String(Math.min(100, users.length + 1))); showToast(`Supabase user created: ${credentials.generated_name}`);
+    } catch (error) { showToast(error instanceof Error ? error.message : "Create user failed"); }
   };
   const deleteLine = async (id) => {
-    await saveEntries(entries.filter((entry) => entry.id !== id));
-    showToast("History line ဖျက်ပြီးပါပြီ");
+    try { await deleteCloudEntry(id); await refreshData(); showToast("Supabase History line ဖျက်ပြီးပါပြီ"); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Delete failed"); }
+  };
+  const saveClosedList = async () => {
+    if (!currentWeek) return showToast("Open lottery week မရှိသေးပါ");
+    try {
+      await Promise.all([
+        ...parsedClosedNumbers.filter((number) => !closedNumbers.includes(number)).map((number) => manageCloudClosedNumber(currentWeek.id, number, "close")),
+        ...closedNumbers.filter((number) => !parsedClosedNumbers.includes(number)).map((number) => manageCloudClosedNumber(currentWeek.id, number, "reopen")),
+      ]);
+      await refreshData(); showToast("ပိတ်ဂဏန်း Supabase မှာ သိမ်းပြီးပါပြီ");
+    } catch (error) { showToast(error instanceof Error ? error.message : "Closed number save failed"); }
   };
   const copyAll = async () => {
     if (!selected || validLines.length === 0) return;
@@ -1742,7 +1574,7 @@ function AdminEnterNumbers() {
       <h1 className="ez-admin-h1">ဂဏန်းထည့်မည် — on behalf of a user</h1>
       <Ticket_ className="ez-admin-control-card">
         <div className="ez-admin-control-grid"><label className="ez-field"><span>အမှတ်စဉ် (1–100)</span><input type="number" min="1" max="100" value={sequence} onChange={(e) => setSequence(String(Math.max(1, Math.min(100, Number(e.target.value) || 1))))}/></label><label className="ez-field"><span>ပိတ်ဂဏန်းများ</span><input value={closedRaw} onChange={(e) => setClosedRaw(e.target.value.replace(/[^\d,\s]/g, ""))} placeholder="344, 455"/></label></div>
-        <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={() => { saveClosedNumbers(parsedClosedNumbers); showToast("ပိတ်ဂဏန်း သိမ်းပြီးပါပြီ"); }}>ပိတ်ဂဏန်း သိမ်းမည်</button>
+        <button className="ez-btn ez-btn-ghost ez-btn-sm" onClick={saveClosedList}>ပိတ်ဂဏန်း သိမ်းမည်</button>
       </Ticket_>
       <Ticket_ className="ez-name-picker">
         <div className="ez-admin-panel-title">အမည်ရွေးမည်</div>
@@ -1755,8 +1587,9 @@ function AdminEnterNumbers() {
           <div className="ez-searchbox ez-admin-search"><Search size={14}/><input placeholder="Profile name သို့ ID ရှာရန်" value={q} onChange={(e) => setQ(e.target.value)}/></div>
           {q && <div className="ez-userpicklist">{filtered.map((user) => <button key={user.id} className={"ez-userpick" + (selected?.id === user.id ? " sel" : "")} onClick={() => { setSelected(user); setQ(""); }}>{user.avatar} {user.nickname}<span className="mono">{user.id}</span></button>)}</div>}
         </> : <>
-          <div className="ez-admin-control-grid"><label className="ez-field"><span>New Name</span><input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ဥပမာ — ဆရာကြီး"/></label><label className="ez-field"><span>ID (optional)</span><input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="မထည့်လျှင် Auto ID"/></label></div>
+          <label className="ez-field"><span>New Name</span><input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ဥပမာ — ဆရာကြီး"/></label>
           <button className="ez-btn ez-btn-gold ez-btn-sm" onClick={createQuickUser}><UserPlus size={14}/> New Name သိမ်းပြီးရွေးမည်</button>
+          {quickCredentials && <div className="ez-credential"><span>Generated ID</span><strong>{quickCredentials.generated_name}</strong><span>Activation code</span><strong>{quickCredentials.one_time_code}</strong></div>}
         </>}
       </Ticket_>
       {selected && (
@@ -1818,7 +1651,7 @@ function AdminHistory() {
 }
 
 function AdminDealerConfirmations() {
-  const { entries, saveEntries, showToast, addAudit, closedNumbers } = useApp();
+  const { entries, showToast, closedNumbers, refreshData } = useApp();
   const groups = Object.values(entries.filter((entry) => entry.viaAdmin).reduce((out, entry) => {
     const key = entry.batchId || entry.id;
     if (!out[key]) out[key] = { id: key, member: entry.ownerName, memberId: entry.ownerId, sequenceNo: entry.sequenceNo, status: entry.workflowStatus || "saved", lines: [] };
@@ -1826,33 +1659,31 @@ function AdminDealerConfirmations() {
     return out;
   }, {}));
   const confirm = async (group) => {
-    const confirmedAt = new Date().toISOString();
-    await saveEntries(entries.map((entry) => (entry.batchId || entry.id) === group.id ? { ...entry, workflowStatus: "confirmed", dealerConfirmedAt: confirmedAt } : entry));
-    await addAudit("Dealer confirmation", `${group.member} · batch ${group.id}`);
-    showToast("Dealer confirmation မှတ်တမ်းတင်ပြီးပါပြီ");
+    try { await confirmCloudDealer(group.id); await refreshData(); showToast("Dealer confirmation Supabase မှာ မှတ်တမ်းတင်ပြီးပါပြီ"); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Confirmation failed"); }
   };
   return <div className="ez-admin-view"><h1 className="ez-admin-h1">Dealer Confirmations</h1><p className="ez-admin-lead">Saved and sent entry batches are confirmed here.</p>{groups.length === 0 ? <p className="ez-empty-note">No dealer batches yet.</p> : <div className="ez-admin-history">{groups.map((group) => <Ticket_ key={group.id} className="ez-history-batch"><div className="ez-history-head"><div><strong>({group.sequenceNo || 1}) {group.member}</strong><code>{group.memberId}</code></div><span className={`ez-history-status ${group.status}`}>{group.status}</span></div><div className="ez-history-lines">{group.lines.map((line) => <div key={line.id}><span>{line.number}{line.hasR ? "R" : ""}-{Number(line.amount).toLocaleString()}</span></div>)}</div><div className="ez-history-total"><span>Total</span><strong>{group.lines.reduce((sum, line) => sum + entryStakeTotal(line, closedNumbers), 0).toLocaleString()} Ks</strong></div>{group.status !== "confirmed" && <button className="ez-btn ez-btn-gold ez-btn-block ez-btn-sm" onClick={() => confirm(group)}><Check size={14}/> Confirm Dealer</button>}</Ticket_>)}</div>}</div>;
 }
 
 function AdminWeeks() {
-  const { weeks, saveWeeks, showToast, addAudit } = useApp();
+  const { weeks, showToast, refreshData } = useApp();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("15:30");
   const add = async () => {
     if (!title.trim() || !date) return showToast("Week title and date are required");
-    const next = [...weeks.map((week) => ({ ...week, status: week.status === "current" ? "closed" : week.status })), { id: Math.random().toString(36).slice(2), title: title.trim(), date, time, status: "current" }];
-    await saveWeeks(next); await addAudit("Week created", `${title} · ${date} ${time}`); setTitle(""); setDate(""); showToast("Current week created");
+    try { await createCloudWeek(title.trim(), `${date}T${time}:00+06:30`, true); await refreshData(); setTitle(""); setDate(""); showToast("Current week created in Supabase"); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Week create failed"); }
   };
-  const makeCurrent = async (id) => { await saveWeeks(weeks.map((week) => ({ ...week, status: week.id === id ? "current" : week.status === "current" ? "closed" : week.status }))); await addAudit("Current week changed", id); };
+  const makeCurrent = async (id) => { const week = weeks.find((item) => item.id === id); if (!week) return; try { await updateCloudWeek(id, { title: week.title, drawDate: `${week.date}T${week.time}:00+06:30`, isOpen: true, isCurrent: true }); await refreshData(); } catch (error) { showToast(error instanceof Error ? error.message : "Week update failed"); } };
   return <div className="ez-admin-view"><h1 className="ez-admin-h1">Weeks</h1><Ticket_ className="ez-authcard"><label className="ez-field"><span>Week title</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="August 23 Week"/></label><div className="ez-admin-control-grid"><label className="ez-field"><span>Draw date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)}/></label><label className="ez-field"><span>Draw time</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)}/></label></div><button className="ez-btn ez-btn-gold ez-btn-block" onClick={add}>Create week</button></Ticket_><div className="ez-week-list">{weeks.map((week) => <Ticket_ key={week.id} className="ez-week-row"><div><strong>{week.title}</strong><span>{week.date} · {week.time}</span></div><span className={`ez-history-status ${week.status === "current" ? "sent" : ""}`}>{week.status}</span>{week.status !== "current" && <button className="ez-link" onClick={() => makeCurrent(week.id)}>Make current</button>}</Ticket_>)}</div></div>;
 }
 
 function AdminDream100() {
-  const { dream100, saveDream100, showToast, addAudit } = useApp();
+  const { dream100, showToast, refreshData } = useApp();
   const [number, setNumber] = useState(""); const [label, setLabel] = useState(""); const [meaning, setMeaning] = useState("");
-  const add = async () => { if (!/^\d{3}$/.test(number) || !label.trim()) return showToast("3-digit number and label are required"); const next = [...dream100.filter((item) => item.number !== number), { number, label: label.trim(), meaning: meaning.trim() }].sort((a, b) => a.number.localeCompare(b.number)); await saveDream100(next); await addAudit("Dream1000 updated", `${number} · ${label}`); setNumber(""); setLabel(""); setMeaning(""); };
-  const remove = async (target) => { await saveDream100(dream100.filter((item) => item.number !== target)); await addAudit("Dream1000 deleted", target); };
+  const add = async () => { if (!/^\d{3}$/.test(number) || !label.trim()) return showToast("3-digit number and label are required"); try { await manageCloudDream("save", { title_mm: label.trim(), numbers: [number], short_description: meaning.trim(), emoji: "🌙" }); await refreshData(); setNumber(""); setLabel(""); setMeaning(""); } catch (error) { showToast(error instanceof Error ? error.message : "Dream item save failed"); } };
+  const remove = async (target) => { const item = dream100.find((entry) => entry.number === target); if (!item) return; try { await manageCloudDream("delete", { id: item.id }); await refreshData(); } catch (error) { showToast(error instanceof Error ? error.message : "Dream item delete failed"); } };
   return <div className="ez-admin-view"><h1 className="ez-admin-h1">Dream1000</h1><Ticket_ className="ez-authcard"><div className="ez-admin-control-grid"><label className="ez-field"><span>Number</span><input value={number} onChange={(e) => setNumber(e.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="001"/></label><label className="ez-field"><span>Dream label</span><input value={label} onChange={(e) => setLabel(e.target.value)}/></label></div><label className="ez-field"><span>Meaning</span><input value={meaning} onChange={(e) => setMeaning(e.target.value)}/></label><button className="ez-btn ez-btn-gold ez-btn-block" onClick={add}>Save Dream1000 item</button></Ticket_><div className="ez-dream-grid">{dream100.map((item) => <Ticket_ key={item.number} className="ez-dream-card"><strong>{item.number}</strong><div><b>{item.label}</b><span>{item.meaning}</span></div><button className="ez-link" onClick={() => remove(item.number)}>Delete</button></Ticket_>)}</div></div>;
 }
 
@@ -1862,7 +1693,7 @@ function AdminAudit() {
 }
 
 function AdminResults() {
-  const { drawRecord, saveDrawRecord, today, showToast, previousResults, savePreviousResults, weeks, profile, entries, closedNumbers, addAudit } = useApp();
+  const { drawRecord, today, showToast, previousResults, weeks, profile, entries, closedNumbers, refreshData } = useApp();
   const currentWeek = weeks.find((week) => week.status === "current") || weeks[0];
   const [weekId, setWeekId] = useState(currentWeek?.id || "");
   const selectedWeek = weeks.find((week) => week.id === weekId) || currentWeek;
@@ -1874,21 +1705,16 @@ function AdminResults() {
 
   const saveDraft = async () => {
     if (!/^\d{3}$/.test(num)) return showToast("Enter a 3-digit number");
-    const next = { ...drawRecord, draft: num, published: drawRecord.date === date ? drawRecord.published : null, date, weekId, weekTitle: selectedWeek?.title, draftUpdatedAt: new Date().toISOString() };
-    await saveDrawRecord(next);
-    await addAudit("Draw draft saved", `${selectedWeek?.title || date} · ${num}`);
-    showToast("Draft saved — not visible to users yet");
+    if (!weekId) return showToast("Select a lottery week");
+    try { await saveCloudResultDraft(weekId, num); await refreshData(); showToast("Draft saved to Supabase — not visible to users yet"); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Draft save failed"); }
   };
   const publish = async () => {
     const n = drawRecord.draft || num;
     if (!/^\d{3}$/.test(n)) return showToast("Save a valid 3-digit draft first");
-    const publishedAt = new Date().toISOString();
-    await saveDrawRecord({ ...drawRecord, draft: n, published: n, date, weekId, weekTitle: selectedWeek?.title, publishedAt, publishedBy: profile.id });
-    const d = new Date(date);
-    const record = { date, number: n, weekId, weekTitle: selectedWeek?.title, drawTime: selectedWeek?.time || "15:30", publishedAt, publishedBy: profile.id, month: d.toLocaleString("en-US", { month: "long" }), year: d.getFullYear(), note: "" };
-    await savePreviousResults([record, ...previousResults.filter((r) => !(r.date === date && (r.weekId || "") === (weekId || "")))]);
-    await addAudit("Result published", `${selectedWeek?.title || date} · ${n}`);
-    showToast(`Published ${n} for ${date} — winners now calculated automatically`);
+    if (!weekId) return showToast("Select a lottery week");
+    try { await publishCloudResult(weekId, n); await refreshData(); showToast(`Published ${n} to Supabase — winners now calculated automatically`); }
+    catch (error) { showToast(error instanceof Error ? error.message : "Publish failed"); }
   };
 
   return (
@@ -1908,7 +1734,7 @@ function AdminResults() {
         <Ticket_ className="ez-draw-admin-status"><strong>{drawRecord.weekTitle || drawRecord.date}</strong><span>Winning number: <b>{drawRecord.draft}</b> · {drawRecord.published === drawRecord.draft ? "Published" : "Draft / editable"}</span>{drawRecord.publishedAt && <small>Published {new Date(drawRecord.publishedAt).toLocaleString()} by {drawRecord.publishedBy}</small>}</Ticket_>
       )}
       {drawRecord.published && drawRecord.date === date && <><div className="ez-statgrid ez-result-stats"><StatCard label="Entries" value={relevantEntries.length} icon={Ticket}/><StatCard label="Winners" value={winners.length} icon={Trophy}/><StatCard label="Prize total (Ks)" value={winners.reduce((sum, item) => sum + item.result.prize, 0).toLocaleString()} icon={Coins}/></div>{winners.length > 0 && <table className="ez-table"><thead><tr><th>Member</th><th>ID</th><th>Entry</th><th>Result</th><th>Prize</th></tr></thead><tbody>{winners.map(({ entry, result }) => <tr key={entry.id}><td>{entry.ownerName}</td><td className="mono">{entry.ownerId}</td><td>{entry.number}{entry.hasR ? "R" : ""}</td><td>{result.outcome} · {result.multiplier}×</td><td>{result.prize.toLocaleString()} Ks</td></tr>)}</tbody></table>}</>}
-      <div className="ez-row-head"><h2>Published result history</h2></div><table className="ez-table"><thead><tr><th>Week</th><th>Number</th><th>Draw date / time</th><th>Published by</th></tr></thead><tbody>{previousResults.map((result, index) => <tr key={`${result.date}-${index}`}><td>{result.weekTitle || `${result.month} ${result.date}`}</td><td className="mono">{result.number}</td><td>{result.date} · {result.drawTime || "—"}</td><td className="mono">{result.publishedBy || "Demo import"}</td></tr>)}</tbody></table>
+      <div className="ez-row-head"><h2>Published result history</h2></div>{previousResults.length === 0 ? <p className="ez-empty-note">No published results yet.</p> : <table className="ez-table"><thead><tr><th>Week</th><th>Number</th><th>Draw date / time</th><th>Published by</th></tr></thead><tbody>{previousResults.map((result, index) => <tr key={`${result.date}-${index}`}><td>{result.weekTitle || `${result.month} ${result.date}`}</td><td className="mono">{result.number}</td><td>{result.date} · {result.drawTime || "—"}</td><td className="mono">{result.publishedBy || "—"}</td></tr>)}</tbody></table>}
     </div>
   );
 }
@@ -1959,45 +1785,6 @@ function AdminWinners() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function AdminPrevious() {
-  const { previousResults, savePreviousResults, showToast } = useApp();
-  const [num, setNum] = useState("");
-  const [date, setDate] = useState("");
-  const [note, setNote] = useState("");
-
-  const add = async () => {
-    if (!/^\d{3}$/.test(num) || !date) return showToast("Enter a 3-digit number and date");
-    const d = new Date(date);
-    await savePreviousResults([
-      { date, number: num, month: d.toLocaleString("en-US", { month: "long" }), year: d.getFullYear(), note },
-      ...previousResults,
-    ]);
-    setNum(""); setDate(""); setNote("");
-    showToast("Historical result added");
-  };
-
-  return (
-    <div className="ez-admin-view">
-      <h1 className="ez-admin-h1">Previous Results — manage history</h1>
-      <Ticket_ className="ez-authcard">
-        <label className="ez-field"><span>Winning Number</span><input value={num} onChange={(e) => setNum(e.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="704" /></label>
-        <label className="ez-field"><span>Draw Date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-        <label className="ez-field"><span>Note (optional)</span><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. imported from last month" /></label>
-        <button className="ez-btn ez-btn-gold ez-btn-block" onClick={add}>Add historical result</button>
-      </Ticket_>
-      <div className="ez-row-head" style={{ marginTop: 20 }}><h2>All results ({previousResults.length})</h2></div>
-      <table className="ez-table">
-        <thead><tr><th>Date</th><th>Number</th><th>Month</th><th>Year</th><th>Note</th></tr></thead>
-        <tbody>
-          {previousResults.map((r, i) => (
-            <tr key={i}><td>{r.date}</td><td className="mono">{r.number}</td><td>{r.month}</td><td>{r.year}</td><td>{r.note || "—"}</td></tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -2153,7 +1940,6 @@ const CSS = `
 .ez-draw-countdown strong{color:var(--gold);font-family:'JetBrains Mono',monospace;}
 .ez-draw-status{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:6px 14px;border-radius:99px;margin:10px 0;font-weight:600;}
 .ez-draw-status.published{background:rgba(92,169,143,0.15);color:var(--sage);}
-.ez-draw-status.demo{background:rgba(231,181,75,0.12);color:var(--gold);}
 
 .ez-lanterns{display:flex;justify-content:center;gap:16px;margin:38px 0 20px;padding-top:22px;}
 .ez-lantern{width:72px;height:92px;background:linear-gradient(180deg,var(--gold),var(--gold-deep));border-radius:38% 38% 22% 22%/50% 50% 18% 18%;position:relative;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 26px rgba(231,181,75,0.18);animation:sway 3.6s ease-in-out infinite;}
@@ -2180,7 +1966,6 @@ const CSS = `
 .ez-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
 .ez-confetti span{position:absolute;top:-10px;width:7px;height:11px;opacity:0.9;animation:confettiFall linear forwards;}
 @keyframes confettiFall{to{transform:translateY(220px) rotate(340deg);opacity:0;}}
-.ez-demo-controls{margin-top:22px;}
 
 /* previous results */
 .ez-filterbar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}

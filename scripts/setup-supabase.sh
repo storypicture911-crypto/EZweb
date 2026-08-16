@@ -24,7 +24,7 @@ npx supabase link --project-ref "$PROJECT_REF"
 npx supabase secrets set --project-ref "$PROJECT_REF" \
   "PIN_PEPPER=$PIN_PEPPER" \
   "APP_INTERNAL_SECRET=$APP_INTERNAL_SECRET" \
-  "APP_ALLOWED_ORIGINS=$SITE_URL,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
+  "APP_ALLOWED_ORIGINS=$SITE_URL,https://storypicture911-crypto.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
 npx supabase db push --linked
 
 for function_name in \
@@ -32,7 +32,18 @@ for function_name in \
   activate-ezwin-user \
   register-ezwin-user \
   request-password-recovery \
-  verify-password-recovery
+  verify-password-recovery \
+  create-ezwin-user \
+  create-lottery-batch \
+  update-lottery-batch \
+  submit-to-dealer \
+  publish-result \
+  save-result-draft \
+  manage-closed-number \
+  manage-lottery-week \
+  manage-dream100 \
+  manage-user \
+  manage-lottery-entry
 do
   npx supabase functions deploy "$function_name" --project-ref "$PROJECT_REF"
 done

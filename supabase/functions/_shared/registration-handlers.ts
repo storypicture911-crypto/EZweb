@@ -22,7 +22,7 @@ export async function registerUser(req: Request) {
       const { error: profileError } = await admin.from("profiles").insert({ id: userId, generated_name: generatedName, nickname, role: "user", avatar_key: "lucky-clover-01" }); if (profileError) throw profileError;
       await admin.from("auth_identities").insert({ user_id: userId, internal_email: email });
       await admin.from("profile_private").insert({ user_id: userId, recovery_email: email, recovery_email_verified_at: new Date().toISOString() });
-      await admin.from("user_roles").insert({ user_id: userId, role: "user" });
+      await admin.from("user_roles").upsert({ user_id: userId, role: "user" }, { onConflict: "user_id" });
       await audit(admin, userId, "SELF_REGISTERED", "profile", userId);
       const { data: signed, error: signError } = await publicClient().auth.signInWithPassword({ email, password }); if (signError || !signed.session) throw signError;
       return json(req, { generated_name: generatedName, session: { access_token: signed.session.access_token, refresh_token: signed.session.refresh_token } });
